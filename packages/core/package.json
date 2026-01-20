@@ -1,0 +1,45 @@
+{
+  "name": "@maritaca/core",
+  "version": "0.1.0",
+  "description": "Core types, validation, and provider interfaces for Maritaca",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "db:generate": "dotenv -e ../../.env -- drizzle-kit generate",
+    "db:migrate": "dotenv -e ../../.env -- drizzle-kit migrate",
+    "db:push": "dotenv -e ../../.env -- drizzle-kit push"
+  },
+  "dependencies": {
+    "zod": "^3.23.0",
+    "drizzle-orm": "^0.31.0",
+    "@paralleldrive/cuid2": "^2.2.2",
+    "postgres": "^3.4.0",
+    "pino": "^9.0.0",
+    "@opentelemetry/api": "^1.4.1",
+    "pino-opentelemetry-transport": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "drizzle-kit": "^0.22.0",
+    "dotenv-cli": "^7.4.2",
+    "pino-pretty": "^11.0.0"
+  }
+}

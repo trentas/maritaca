@@ -1,0 +1,44 @@
+{
+  "name": "@maritaca/api",
+  "version": "0.1.0",
+  "description": "Fastify HTTP API server for Maritaca",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@maritaca/core": "workspace:*",
+    "fastify": "^4.26.0",
+    "@fastify/env": "^4.2.0",
+    "bullmq": "^5.0.0",
+    "ioredis": "^5.3.0",
+    "bcrypt": "^5.1.1",
+    "drizzle-orm": "^0.31.0",
+    "@paralleldrive/cuid2": "^2.2.2",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.57.0",
+    "@opentelemetry/sdk-metrics": "^1.27.0",
+    "@opentelemetry/resources": "^1.28.0",
+    "@fastify/otel": "^0.16.0",
+    "@opentelemetry/instrumentation-http": "^0.57.0",
+    "@opentelemetry/instrumentation-ioredis": "^0.58.0",
+    "@appsignal/opentelemetry-instrumentation-bullmq": "^0.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/bcrypt": "^5.0.2",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0"
+  }
+}
