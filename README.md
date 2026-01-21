@@ -1,9 +1,6 @@
-```
-  ,_,
- (o,o)
- {`"`}
- -"-"-
-```
+<p align="center">
+  <img src="assets/logo.svg" alt="Maritaca" width="200">
+</p>
 
 # Maritaca
 
@@ -240,6 +237,10 @@ Optional (OpenTelemetry / observability): `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OT
 ## Observability
 
 Traces, metrics and logs are exported via OpenTelemetry (OTLP) when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. [docs/signoz-howto.md](./docs/signoz-howto.md) explains how to configure SigNoz and Maritaca.
+
+## Logo and assets
+
+Logo, icon, favicon and app icon sources (SVG) and how to generate `favicon.ico` and PNGs: [assets/](assets/README.md).
 
 ## License
 

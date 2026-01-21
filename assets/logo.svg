@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40" fill="none" aria-hidden="true">
+  <g transform="translate(0,4)">
+    <rect width="32" height="32" rx="6" fill="#0d9488"/>
+    <path fill="#fff" d="M6 10L6 22l14-6L6 10z"/>
+  </g>
+  <text x="44" y="28" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="24" font-weight="600" fill="#18181b">Maritaca</text>
+</svg>
