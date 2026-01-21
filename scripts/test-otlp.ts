@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Valida configuração OTLP e testa conectividade com o collector (ex.: SigNoz).
+ * Validates OTLP configuration and tests connectivity with an OTLP collector.
  * Uso: pnpm test:otlp  (ou: dotenv -e .env -- pnpm exec tsx scripts/test-otlp.ts)
  *
  * Verifica:
@@ -24,16 +24,16 @@ function log(msg: string, data?: object) {
   console.log(`[test-otlp] ${line}`)
 }
 
-log('OTEL_EXPORTER_OTLP_ENDPOINT', { raw: endpointRaw || '(vazio – SDK usará default)', effectiveBase })
-log('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT', { raw: logsEndpoint || '(não definido)' })
+log('OTEL_EXPORTER_OTLP_ENDPOINT', { raw: endpointRaw || '(empty – SDK will use default)', effectiveBase })
+log('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT', { raw: logsEndpoint || '(not set)' })
 log('OTEL_EXPORTER_OTLP_INSECURE', { value: insecure })
 
 if (!endpointRaw || endpointRaw.trim() === '') {
   console.warn(
-    '[test-otlp] AVISO: OTEL_EXPORTER_OTLP_ENDPOINT está vazio. No container, o SDK usará\n' +
-    '  http://localhost:4318 (dentro do container localhost ≠ host; SigNoz em outro container não será alcançado).\n' +
-    '  Defina no .env: OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318 (Docker) ou\n' +
-    '  http://localhost:4318 (app fora do Docker, SigNoz no host).'
+    '[test-otlp] WARNING: OTEL_EXPORTER_OTLP_ENDPOINT is empty. In the container, the SDK will use\n' +
+    '  http://localhost:4318 (inside the container localhost ≠ host; a collector in another container won\'t be reachable).\n' +
+    '  Set in .env: OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318 (Docker) or\n' +
+    '  http://localhost:4318 (app outside Docker, collector on host).'
   )
 }
 
@@ -52,29 +52,29 @@ async function probeOne(url: string): Promise<{ status?: number; ok?: boolean; e
 }
 
 async function probe(): Promise<{ status?: number; ok?: boolean; err?: string }> {
-  log('Testando conectividade', { url: tracesUrl })
+  log('Testing connectivity', { url: tracesUrl })
   let r = await probeOne(tracesUrl)
-  // host.docker.internal não resolve no host; fallback para localhost ao rodar test no host
+  // host.docker.internal doesn't resolve on host; fallback to localhost when running test on host
   if (r.err === 'ENOTFOUND' && effectiveBase.includes('host.docker.internal')) {
     const localUrl = 'http://localhost:4318/v1/traces'
-    log('host.docker.internal não resolve no host; tentando localhost (teste no host)', { url: localUrl })
+    log('host.docker.internal doesn\'t resolve on host; trying localhost (host-side test)', { url: localUrl })
     r = await probeOne(localUrl)
   }
   if (r.err) {
-    log('Erro na sondagem', { err: r.err })
+    log('Probe error', { err: r.err })
     console.error(
-      '[test-otlp] Conectividade: FALHOU –', r.err, '\n' +
-      '  Possíveis causas: coletor não está rodando, porta 4318 não exposta no host,\n' +
-      '  hostname incorreto (ex.: localhost dentro do container), ou rede/firewall.'
+      '[test-otlp] Connectivity: FAILED –', r.err, '\n' +
+      '  Possible causes: collector not running, port 4318 not exposed on host,\n' +
+      '  incorrect hostname (e.g. localhost inside container), or network/firewall.'
     )
     process.exitCode = 1
     return r
   }
-  log('Resposta do coletor', { status: r.status, ok: r.ok })
+  log('Collector response', { status: r.status, ok: r.ok })
   if (r.ok) {
-    console.log('[test-otlp] Conectividade: OK – o coletor está alcançável.')
+    console.log('[test-otlp] Connectivity: OK – collector is reachable.')
   } else {
-    console.warn('[test-otlp] Conectividade: respondeu com', r.status, '– verifique se o pipeline OTLP está habilitado.')
+    console.warn('[test-otlp] Connectivity: responded with', r.status, '– verify OTLP pipeline is enabled.')
   }
   return r
 }

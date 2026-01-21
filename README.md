@@ -232,11 +232,11 @@ Required:
 - `LOG_LEVEL`: Logging level (default: info)
 - `SLACK_BOT_TOKEN`: Slack bot token (optional, can be provided per message)
 
-Optional (OpenTelemetry / observability): `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, `OTEL_EXPORTER_OTLP_INSECURE`. See [docs/signoz-howto.md](./docs/signoz-howto.md) for SigNoz integration.
+Optional (OpenTelemetry / observability): `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, `OTEL_EXPORTER_OTLP_INSECURE`. See [docs/observability.md](./docs/observability.md) for OpenTelemetry configuration.
 
 ## Observability
 
-Traces, metrics and logs are exported via OpenTelemetry (OTLP) when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. [docs/signoz-howto.md](./docs/signoz-howto.md) explains how to configure SigNoz and Maritaca.
+Traces, metrics and logs are exported via OpenTelemetry (OTLP) when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. [docs/observability.md](./docs/observability.md) explains how to configure OpenTelemetry with Maritaca.
 
 ## Logo and assets
 

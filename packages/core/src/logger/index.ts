@@ -51,7 +51,7 @@ const defaultPinoFormatters: pino.LoggerOptions['formatters'] = {
 /**
  * Create a Pino logger instance with OpenTelemetry trace context integration.
  * Injects traceId and spanId when a span is active. If OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
- * is set, logs are also sent to that OTLP endpoint (e.g. SigNoz) via pino-opentelemetry-transport.
+ * is set, logs are also sent to that OTLP endpoint via pino-opentelemetry-transport.
  */
 export async function createLogger(options: LoggerOptions = {}): Promise<pino.Logger> {
   const {

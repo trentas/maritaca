@@ -59,7 +59,7 @@ export async function startWorker(options: WorkerOptions): Promise<void> {
 
   logger.info('Worker started and listening for jobs')
 
-  // Garante ao menos um span para o worker aparecer no SigNoz (ex.: sem jobs ainda)
+  // Ensures at least one span so the worker service appears in observability platforms (e.g. when no jobs processed yet)
   trace.getTracer('maritaca-worker', '1.0').startSpan('worker.ready').end()
 
   // Graceful shutdown
