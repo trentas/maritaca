@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="Maritaca" width="200">
+  <img src="assets/favicon.svg" alt="Maritaca" width="200">
 </p>
 
 # Maritaca
