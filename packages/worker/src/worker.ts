@@ -1,3 +1,4 @@
+import { trace } from '@opentelemetry/api'
 import { Worker } from 'bullmq'
 import { createDbClient, createLogger, type Logger } from '@maritaca/core'
 import { processMessageJob } from './processors/message.js'
@@ -57,7 +58,10 @@ export async function startWorker(options: WorkerOptions): Promise<void> {
   const worker = await createWorker({ ...options, logger })
 
   logger.info('Worker started and listening for jobs')
-  
+
+  // Garante ao menos um span para o worker aparecer no SigNoz (ex.: sem jobs ainda)
+  trace.getTracer('maritaca-worker', '1.0').startSpan('worker.ready').end()
+
   // Graceful shutdown
   process.on('SIGTERM', async () => {
     logger.info('SIGTERM received, shutting down worker...')

@@ -34,6 +34,8 @@ services:
       context: .
       dockerfile: Dockerfile.api
     container_name: maritaca-api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: production
       PORT: 7377
@@ -58,6 +60,8 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     container_name: maritaca-worker
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://maritaca:maritaca@postgres:5432/maritaca

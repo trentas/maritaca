@@ -45,7 +45,7 @@ Maritaca is built as a monorepo with 4 packages:
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/maritaca.git
+git clone https://github.com/trentas/maritaca.git
 cd maritaca
 ```
 
@@ -96,11 +96,10 @@ This will start:
 5. Run database migrations:
 
 ```bash
-cd packages/core
-pnpm db:push
+cd packages/core && pnpm db:push && cd ../..
 ```
 
-6. Create an API key:
+6. Create an API key (from the project root):
 
 ```bash
 pnpm create-api-key
@@ -227,7 +226,7 @@ Currently a mock provider that logs messages. Real email providers (Resend, SMTP
 
 ## Environment Variables
 
-Required environment variables:
+Required:
 
 - `DATABASE_URL`: PostgreSQL connection string
 - `REDIS_URL`: Redis connection string
@@ -235,6 +234,12 @@ Required environment variables:
 - `HOST`: API server host (default: 0.0.0.0)
 - `LOG_LEVEL`: Logging level (default: info)
 - `SLACK_BOT_TOKEN`: Slack bot token (optional, can be provided per message)
+
+Optional (OpenTelemetry / observability): `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, `OTEL_EXPORTER_OTLP_INSECURE`. See [docs/signoz-howto.md](./docs/signoz-howto.md) for SigNoz integration.
+
+## Observability
+
+Traces, metrics and logs are exported via OpenTelemetry (OTLP) when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. [docs/signoz-howto.md](./docs/signoz-howto.md) explains how to configure SigNoz and Maritaca.
 
 ## License
 

@@ -18,11 +18,14 @@ const resource = new Resource({
   'deployment.environment': process.env.NODE_ENV || 'development',
 })
 
-const traceExporter = new OTLPTraceExporter()
-const metricReader = new PeriodicExportingMetricReader({
-  exporter: new OTLPMetricExporter(),
-  exportIntervalMillis: 60_000,
-})
+const otelEndpoint = (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || '').trim()
+const traceExporter = otelEndpoint ? new OTLPTraceExporter() : undefined
+const metricReader = otelEndpoint
+  ? new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter(),
+      exportIntervalMillis: 60_000,
+    })
+  : undefined
 
 const sdk = new NodeSDK({
   resource,
@@ -38,6 +41,14 @@ const sdk = new NodeSDK({
 })
 
 async function start() {
+  // #region agent log
+  const dbg = (msg: string, d: object, hyp: string) => { fetch('http://127.0.0.1:7244/ingest/e10096f9-1cf5-4b11-9942-8eed4f6588b2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/instrumentation.ts:start',message:msg,data:d,timestamp:Date.now(),sessionId:'debug-session',hypothesisId:hyp,runId:'post-fix'})}).catch(()=>{}); };
+  dbg('OTLP env', { OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? '(vazio)', otelEndpoint, OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ?? '(vazio)', OTEL_EXPORTER_OTLP_INSECURE: process.env.OTEL_EXPORTER_OTLP_INSECURE }, 'H1');
+  if (otelEndpoint) {
+    const probeUrl = otelEndpoint.replace(/\/$/, '') + '/v1/traces';
+    fetch(probeUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>({status:r.status,ok:r.ok})).catch(e=>({err:String(e?.cause?.code||e?.message||e)})).then(r=>{ dbg('OTLP connectivity probe',{connectivity:r,probeUrl},'H3'); if (r.err) console.warn('[OTLP] connectivity failed', r.err); else console.log('[OTLP] connectivity OK', r.status); });
+  }
+  // #endregion
   await sdk.start()
 }
 

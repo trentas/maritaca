@@ -74,23 +74,31 @@ export async function createLogger(options: LoggerOptions = {}): Promise<pino.Lo
       : undefined)
 
   if (logsEndpoint) {
-    const targets: pino.TransportTargetOptions[] = [
-      pretty
-        ? {
-            target: 'pino-pretty',
-            options: { colorize: true, translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
-          }
-        : { target: 'pino/file', options: { destination: 1 } },
-      {
+    const levelOpt = level as pino.Level
+    // stdout primeiro: process.stdout no processo principal para docker logs; sync para reduzir buffer.
+    const stdoutStream = pretty
+      ? await pino.transport({
+          target: 'pino-pretty',
+          options: { colorize: true, translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
+        })
+      : pino.destination({ dest: 1, sync: true, minLength: 1 })
+
+    const streams: pino.StreamEntry[] = [{ stream: stdoutStream, level: levelOpt }]
+
+    try {
+      const otelStream = await pino.transport({
         target: 'pino-opentelemetry-transport',
         options: {
           serviceVersion,
           resourceAttributes: { 'service.name': serviceName },
         },
-      },
-    ]
-    const stream = await pino.transport({ targets })
-    return pino(baseOpts, stream)
+      })
+      streams.push({ stream: otelStream, level: levelOpt })
+    } catch (_) {
+      // OTLP transport falhou; segue só com stdout
+    }
+
+    return pino(baseOpts, pino.multistream(streams))
   }
 
   if (pretty) {

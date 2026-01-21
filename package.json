@@ -16,7 +16,8 @@
     "dev": "turbo run dev",
     "clean": "turbo run clean && rm -rf node_modules",
     "typecheck": "turbo run typecheck",
-    "create-api-key": "dotenv -e .env -- tsx scripts/create-api-key.ts"
+    "create-api-key": "dotenv -e .env -- tsx scripts/create-api-key.ts",
+    "test:otlp": "dotenv -e .env -- tsx scripts/test-otlp.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
