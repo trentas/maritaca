@@ -53,6 +53,29 @@ export interface PushRecipient {
 }
 
 /**
+ * Web Push subscription keys
+ */
+export interface WebPushKeys {
+  /** The p256dh key from the subscription */
+  p256dh: string
+  /** The auth secret from the subscription */
+  auth: string
+}
+
+/**
+ * Web Push recipient information (browser push notifications)
+ * This is the PushSubscription object from the browser's Push API
+ */
+export interface WebPushRecipient {
+  /** The push subscription endpoint URL */
+  endpoint: string
+  /** Optional expiration time of the subscription */
+  expirationTime?: number | null
+  /** The subscription keys for encryption */
+  keys: WebPushKeys
+}
+
+/**
  * Recipient information for notifications
  */
 export interface Recipient {
@@ -64,8 +87,10 @@ export interface Recipient {
   slack?: SlackRecipient
   /** SMS recipient (phone number) */
   sms?: SmsRecipient
-  /** Push notification recipient */
+  /** Push notification recipient (mobile - iOS/Android) */
   push?: PushRecipient
+  /** Web Push recipient (browser) */
+  web?: WebPushRecipient
 }
 
 /**
@@ -113,7 +138,7 @@ export interface ChannelOverrides {
     /** Sender ID (alphanumeric, max 11 chars, not supported in all countries) */
     senderId?: string
   }
-  /** Push notification overrides */
+  /** Push notification overrides (mobile) */
   push?: {
     /** Badge count for iOS */
     badge?: number
@@ -123,6 +148,35 @@ export interface ChannelOverrides {
     data?: Record<string, any>
     /** Time to live in seconds */
     ttl?: number
+  }
+  /** Web Push overrides (browser) */
+  web?: {
+    /** Icon URL for the notification */
+    icon?: string
+    /** Badge URL (small monochrome icon) */
+    badge?: string
+    /** Image URL to display in the notification */
+    image?: string
+    /** Notification tag for grouping/replacing */
+    tag?: string
+    /** Whether to renotify if same tag */
+    renotify?: boolean
+    /** Whether notification requires interaction */
+    requireInteraction?: boolean
+    /** Vibration pattern (array of ms) */
+    vibrate?: number[]
+    /** Action buttons */
+    actions?: Array<{
+      action: string
+      title: string
+      icon?: string
+    }>
+    /** Custom data payload */
+    data?: Record<string, any>
+    /** Time to live in seconds */
+    ttl?: number
+    /** Urgency: very-low, low, normal, high */
+    urgency?: 'very-low' | 'low' | 'normal' | 'high'
   }
 }
 

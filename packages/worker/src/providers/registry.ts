@@ -3,6 +3,7 @@ import { SlackProvider } from './slack.js'
 import { createEmailProvider } from './email/index.js'
 import { createSmsProvider } from './sms/index.js'
 import { createPushProvider } from './push/index.js'
+import { createWebProvider } from './web/index.js'
 
 /**
  * Provider registry - singleton instances of providers
@@ -54,8 +55,7 @@ class ProviderRegistry {
         provider = createPushProvider(null, { logger: this.logger })
         break
       case 'web':
-        // Not implemented yet
-        provider = null
+        provider = createWebProvider(null, { logger: this.logger })
         break
       default:
         provider = null

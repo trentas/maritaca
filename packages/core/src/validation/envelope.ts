@@ -42,7 +42,7 @@ export const smsRecipientSchema = z.object({
 })
 
 /**
- * Push notification recipient schema
+ * Push notification recipient schema (mobile)
  */
 export const pushRecipientSchema = z
   .object({
@@ -56,6 +56,23 @@ export const pushRecipientSchema = z
   )
 
 /**
+ * Web Push keys schema
+ */
+export const webPushKeysSchema = z.object({
+  p256dh: z.string().min(1, 'p256dh key is required'),
+  auth: z.string().min(1, 'auth key is required'),
+})
+
+/**
+ * Web Push recipient schema (browser push notifications)
+ */
+export const webPushRecipientSchema = z.object({
+  endpoint: z.string().url('endpoint must be a valid URL'),
+  expirationTime: z.number().nullable().optional(),
+  keys: webPushKeysSchema,
+})
+
+/**
  * Recipient schema
  */
 export const recipientSchema = z.object({
@@ -64,6 +81,7 @@ export const recipientSchema = z.object({
   slack: slackRecipientSchema.optional(),
   sms: smsRecipientSchema.optional(),
   push: pushRecipientSchema.optional(),
+  web: webPushRecipientSchema.optional(),
 })
 
 /**
@@ -112,6 +130,29 @@ export const channelOverridesSchema = z.object({
       sound: z.string().optional(),
       data: z.record(z.any()).optional(),
       ttl: z.number().int().min(0).optional(),
+    })
+    .optional(),
+  web: z
+    .object({
+      icon: z.string().url().optional(),
+      badge: z.string().url().optional(),
+      image: z.string().url().optional(),
+      tag: z.string().optional(),
+      renotify: z.boolean().optional(),
+      requireInteraction: z.boolean().optional(),
+      vibrate: z.array(z.number().int().min(0)).optional(),
+      actions: z
+        .array(
+          z.object({
+            action: z.string(),
+            title: z.string(),
+            icon: z.string().optional(),
+          })
+        )
+        .optional(),
+      data: z.record(z.any()).optional(),
+      ttl: z.number().int().min(0).optional(),
+      urgency: z.enum(['very-low', 'low', 'normal', 'high']).optional(),
     })
     .optional(),
 })

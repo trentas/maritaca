@@ -5,6 +5,8 @@ export type {
   SlackRecipient,
   SmsRecipient,
   PushRecipient,
+  WebPushKeys,
+  WebPushRecipient,
   Recipient,
   Payload,
   ChannelOverrides,
