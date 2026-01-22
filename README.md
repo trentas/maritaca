@@ -8,10 +8,21 @@ A self-hosted, event-oriented notification API for multi-channel notifications w
 
 Maritaca is to notifications what Resend is to email: simple, predictable, well-typed, easy to debug, and extensible through providers.
 
+## Supported Channels
+
+| Channel | Providers | Use Case |
+|---------|-----------|----------|
+| **email** | Resend, AWS SES | Transactional emails, marketing |
+| **slack** | Slack API | Team notifications, alerts |
+| **sms** | AWS SNS, Twilio | OTP codes, urgent alerts |
+| **whatsapp** | Twilio | Customer messaging, support |
+| **push** | AWS SNS | Mobile apps (iOS/Android) |
+| **web** | Web Push | Browser notifications |
+
 ## Features
 
+- **Multi-channel**: Email, Slack, SMS, WhatsApp, Push (mobile & web)
 - **Event-first architecture**: Every notification generates explicit, queryable events
-- **Multi-channel**: Email (Resend, AWS SES), Slack (users, channels), with more coming
 - **Provider-agnostic**: Swap providers without changing application code
 - **GDPR/LGPD compliant**: Audit logs with encrypted PII, data retention policies
 - **Self-hosted**: No mandatory external SaaS dependencies
@@ -86,83 +97,143 @@ const maritaca = new Maritaca({
   baseUrl: 'http://localhost:7377'
 })
 
-// Send via Slack
-await maritaca.messages.send({
-  idempotencyKey: 'order-123-confirmed',
-  channels: ['slack'],
-  sender: { name: 'Acme Store' },
-  recipient: { 
-    slack: { userId: 'U01ABC123' }  // or channelName: 'orders'
-  },
-  payload: {
-    title: 'Order Confirmed',
-    text: 'Your order #123 has been confirmed!'
-  }
-})
-
-// Send via Email
+// Email
 await maritaca.messages.send({
   idempotencyKey: 'welcome-user-456',
   channels: ['email'],
-  sender: { 
-    name: 'Acme Store',
-    email: 'hello@acme.com'
-  },
-  recipient: { 
-    email: 'customer@example.com'
-  },
+  sender: { name: 'Acme', email: 'hello@acme.com' },
+  recipient: { email: 'customer@example.com' },
   payload: {
-    title: 'Welcome to Acme!',
+    title: 'Welcome!',
     text: 'Thanks for signing up.',
-    html: '<h1>Welcome!</h1><p>Thanks for signing up.</p>'
+    html: '<h1>Welcome!</h1>'
   }
+})
+
+// Slack
+await maritaca.messages.send({
+  idempotencyKey: 'order-confirmed',
+  channels: ['slack'],
+  sender: { name: 'Order Bot' },
+  recipient: { slack: { channelName: 'orders' } },
+  payload: { text: 'Order #123 confirmed!' }
+})
+
+// SMS
+await maritaca.messages.send({
+  idempotencyKey: 'otp-789',
+  channels: ['sms'],
+  sender: { name: 'Acme' },
+  recipient: { sms: { phoneNumber: '+5511999999999' } },
+  payload: { text: 'Your code is 123456' }
+})
+
+// WhatsApp
+await maritaca.messages.send({
+  idempotencyKey: 'whatsapp-order',
+  channels: ['whatsapp'],
+  sender: { name: 'Acme' },
+  recipient: { whatsapp: { phoneNumber: '+5511999999999' } },
+  payload: { title: 'Order Update', text: 'Your order shipped!' },
+  overrides: {
+    whatsapp: { contentSid: 'HX1234...' } // Template for initiation
+  }
+})
+
+// Web Push (Browser)
+await maritaca.messages.send({
+  idempotencyKey: 'web-push-alert',
+  channels: ['web'],
+  sender: { name: 'Acme' },
+  recipient: {
+    web: {
+      endpoint: 'https://fcm.googleapis.com/fcm/send/...',
+      keys: { p256dh: '...', auth: '...' }
+    }
+  },
+  payload: { title: 'New Message', text: 'You have a notification' }
+})
+
+// Mobile Push (iOS/Android)
+await maritaca.messages.send({
+  idempotencyKey: 'mobile-push',
+  channels: ['push'],
+  sender: { name: 'Acme' },
+  recipient: {
+    push: { deviceToken: 'abc123...', platform: 'APNS' }
+  },
+  payload: { title: 'New Order', text: 'Order #456 received' },
+  overrides: { push: { badge: 1, sound: 'default' } }
+})
+
+// Multi-channel (same message, multiple channels)
+await maritaca.messages.send({
+  idempotencyKey: 'urgent-alert',
+  channels: ['email', 'sms', 'slack'],
+  sender: { name: 'Alerts', email: 'alerts@acme.com' },
+  recipient: {
+    email: 'admin@acme.com',
+    sms: { phoneNumber: '+5511999999999' },
+    slack: { channelName: 'alerts' }
+  },
+  payload: { title: 'Server Down', text: 'Production is unreachable!' }
 })
 ```
 
 ### Using cURL
 
 ```bash
-# Send Slack message
+# Email
 curl -X POST http://localhost:7377/v1/messages \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "idempotencyKey": "test-123",
-    "channels": ["slack"],
-    "sender": { "name": "Test" },
-    "recipient": { "slack": { "channelName": "general" } },
-    "payload": { "text": "Hello from Maritaca!" }
-  }'
-
-# Send email via Resend
-curl -X POST http://localhost:7377/v1/messages \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "idempotencyKey": "email-456",
+    "idempotencyKey": "email-123",
     "channels": ["email"],
     "sender": { "name": "Acme", "email": "noreply@acme.com" },
     "recipient": { "email": "user@example.com" },
-    "payload": { 
-      "title": "Welcome!", 
-      "text": "Thanks for joining." 
-    }
+    "payload": { "title": "Welcome!", "text": "Thanks for joining." }
+  }'
+
+# SMS via Twilio
+curl -X POST http://localhost:7377/v1/messages \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "idempotencyKey": "sms-456",
+    "channels": ["sms"],
+    "sender": { "name": "Acme" },
+    "recipient": { "sms": { "phoneNumber": "+5511999999999" } },
+    "payload": { "text": "Your code: 123456" },
+    "overrides": { "sms": { "provider": "twilio" } }
+  }'
+
+# WhatsApp
+curl -X POST http://localhost:7377/v1/messages \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "idempotencyKey": "whatsapp-789",
+    "channels": ["whatsapp"],
+    "sender": { "name": "Acme" },
+    "recipient": { "whatsapp": { "phoneNumber": "+5511999999999" } },
+    "payload": { "text": "Your order has shipped!" }
   }'
 ```
 
 ## Providers
 
-### Email Providers
+### Email
 
 | Provider | Description | Required Config |
 |----------|-------------|-----------------|
 | **mock** | Logs emails (development) | None |
 | **resend** | [Resend](https://resend.com) API | `RESEND_API_KEY` |
-| **ses** | AWS Simple Email Service | `AWS_REGION`, credentials |
+| **ses** | AWS Simple Email Service | `AWS_REGION`, AWS credentials |
 
-Set `EMAIL_PROVIDER` environment variable to choose (default: `mock`).
+Set `EMAIL_PROVIDER` environment variable (default: `mock`).
 
-### Slack Provider
+### Slack
 
 Send messages to users or channels with multiple recipient options:
 
@@ -173,12 +244,55 @@ Send messages to users or channels with multiple recipient options:
 | `channelName` | `general` | Post to channel by name |
 | `email` | `user@company.com` | Lookup user by email, send DM |
 
-Features:
-- LRU cache for email→userId lookups (configurable size/TTL)
-- Automatic retry with exponential backoff for rate limits
-- Custom Slack blocks support via `overrides.slack.blocks`
+Features: LRU cache for email lookups, automatic retry with backoff, Slack blocks support.
 
 Required: `SLACK_BOT_TOKEN` with scopes `chat:write`, `users:read.email`
+
+### SMS
+
+| Provider | Description | Required Config |
+|----------|-------------|-----------------|
+| **sns** | AWS SNS (default) | `AWS_REGION`, AWS credentials |
+| **twilio** | Twilio Programmable SMS | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_SMS_FROM` |
+
+Set `SMS_PROVIDER` or override per-message via `overrides.sms.provider`.
+
+### WhatsApp
+
+Uses Twilio WhatsApp Business API.
+
+| Feature | Description |
+|---------|-------------|
+| Template messages | Required for initiating conversations (`contentSid`) |
+| Session messages | Free-form within 24h window |
+| Media attachments | Images, documents via `mediaUrl` |
+
+Required: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`
+
+### Push (Mobile)
+
+AWS SNS for iOS (APNs) and Android (FCM/GCM):
+
+| Platform | Config |
+|----------|--------|
+| iOS Production | `SNS_APNS_PLATFORM_ARN` |
+| iOS Sandbox | `SNS_APNS_SANDBOX_PLATFORM_ARN` |
+| Android | `SNS_GCM_PLATFORM_ARN` |
+
+Supports: badge, sound, TTL, custom data payload.
+
+### Web Push (Browser)
+
+Uses Web Push Protocol with VAPID authentication:
+
+```bash
+# Generate VAPID keys
+npx web-push generate-vapid-keys
+```
+
+Required: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+
+Supports: icon, badge, image, actions, vibrate, urgency, TTL.
 
 ## API Endpoints
 
@@ -189,14 +303,18 @@ Create and send a notification.
 ```json
 {
   "idempotencyKey": "unique-key",
-  "channels": ["email", "slack"],
+  "channels": ["email", "slack", "sms", "whatsapp", "push", "web"],
   "sender": { 
     "name": "Acme",
     "email": "noreply@acme.com"
   },
   "recipient": { 
     "email": "user@example.com",
-    "slack": { "userId": "U01ABC" }
+    "slack": { "userId": "U01ABC" },
+    "sms": { "phoneNumber": "+5511999999999" },
+    "whatsapp": { "phoneNumber": "+5511999999999" },
+    "push": { "deviceToken": "...", "platform": "APNS" },
+    "web": { "endpoint": "...", "keys": { "p256dh": "...", "auth": "..." } }
   },
   "payload": {
     "title": "Order Shipped",
@@ -204,9 +322,15 @@ Create and send a notification.
     "html": "<p>Your order is on the way!</p>"
   },
   "overrides": {
-    "email": { "subject": "Custom Subject" },
-    "slack": { "blocks": [...] }
-  }
+    "email": { "subject": "Custom Subject", "provider": "resend" },
+    "slack": { "blocks": [] },
+    "sms": { "provider": "twilio", "messageType": "Transactional" },
+    "whatsapp": { "contentSid": "HX...", "mediaUrl": "https://..." },
+    "push": { "badge": 1, "sound": "default", "ttl": 3600 },
+    "web": { "icon": "/icon.png", "urgency": "high", "actions": [] }
+  },
+  "priority": "high",
+  "scheduleAt": "2024-01-15T10:00:00Z"
 }
 ```
 
@@ -275,17 +399,57 @@ See [docs/observability.md](./docs/observability.md) for detailed setup.
 
 All configuration is done via environment variables. See [.env.example](./.env.example) for the complete list with documentation.
 
-Key variables:
+### Core
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `REDIS_URL` | Yes | Redis connection string |
-| `SLACK_BOT_TOKEN` | For Slack | Slack bot token |
-| `EMAIL_PROVIDER` | No | `mock`, `resend`, or `ses` |
+| `AUDIT_ENCRYPTION_KEY` | Production | PII encryption key (AES-256) |
+
+### Email
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `EMAIL_PROVIDER` | No | `mock`, `resend`, or `ses` (default: `mock`) |
 | `RESEND_API_KEY` | For Resend | Resend API key |
-| `AWS_REGION` | For SES | AWS region |
-| `AUDIT_ENCRYPTION_KEY` | Production | PII encryption key |
+| `AWS_REGION` | For SES/SNS | AWS region |
+
+### Slack
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SLACK_BOT_TOKEN` | For Slack | Bot token with `chat:write`, `users:read.email` |
+
+### SMS
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SMS_PROVIDER` | No | `sns` or `twilio` (default: `sns`) |
+| `TWILIO_ACCOUNT_SID` | For Twilio | Twilio account SID |
+| `TWILIO_AUTH_TOKEN` | For Twilio | Twilio auth token |
+| `TWILIO_SMS_FROM` | For Twilio | Sender phone number (E.164) |
+
+### WhatsApp
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TWILIO_WHATSAPP_FROM` | For WhatsApp | WhatsApp-enabled number (E.164) |
+
+### Push (Mobile)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SNS_APNS_PLATFORM_ARN` | For iOS | APNs platform application ARN |
+| `SNS_GCM_PLATFORM_ARN` | For Android | FCM platform application ARN |
+
+### Web Push
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VAPID_PUBLIC_KEY` | For Web Push | VAPID public key |
+| `VAPID_PRIVATE_KEY` | For Web Push | VAPID private key |
+| `VAPID_SUBJECT` | For Web Push | `mailto:` or `https:` URL |
 
 ## Development
 
@@ -323,7 +487,13 @@ maritaca/
 │   ├── worker/         # BullMQ notification workers
 │   │   ├── src/
 │   │   │   ├── processors/ # Message, maintenance processors
-│   │   │   ├── providers/  # Email, Slack providers
+│   │   │   ├── providers/
+│   │   │   │   ├── email/  # Resend, SES, Mock
+│   │   │   │   ├── slack/  # Slack API
+│   │   │   │   ├── sms/    # AWS SNS
+│   │   │   │   ├── push/   # AWS SNS (mobile)
+│   │   │   │   ├── web/    # Web Push
+│   │   │   │   └── twilio/ # SMS, WhatsApp
 │   │   │   └── queues/     # Queue definitions
 │   │   └── ...
 │   └── sdk/            # TypeScript client
