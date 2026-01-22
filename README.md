@@ -10,22 +10,39 @@ Maritaca is to notifications what Resend is to email: simple, predictable, well-
 
 ## Features
 
-- 🚀 **Event-first architecture**: Everything generates explicit events
-- 🔌 **Provider-agnostic**: Core never depends on external APIs directly
-- 👨‍💻 **Developer-first**: Easy to understand without extensive documentation
-- 🏠 **Self-hosted by default**: No mandatory external SaaS dependencies
-- 🔄 **Idempotent by design**: Retries never create duplicates
-- 📊 **Multi-channel**: Send notifications via email, Slack, push, web, and more
-- 🎯 **Type-safe**: Full TypeScript support with strong typing
+- **Event-first architecture**: Every notification generates explicit, queryable events
+- **Multi-channel**: Email (Resend, AWS SES), Slack (users, channels), with more coming
+- **Provider-agnostic**: Swap providers without changing application code
+- **GDPR/LGPD compliant**: Audit logs with encrypted PII, data retention policies
+- **Self-hosted**: No mandatory external SaaS dependencies
+- **Idempotent by design**: Safe retries, no duplicate notifications
+- **Observable**: OpenTelemetry traces, metrics, and logs built-in
+- **Type-safe**: Full TypeScript support with Zod validation
+- **Production-ready**: Health checks, rate limiting, LRU caching
 
 ## Architecture
 
 Maritaca is built as a monorepo with 4 packages:
 
-- **@maritaca/core**: Shared types, validation, event model, provider interfaces
-- **@maritaca/api**: Fastify HTTP API server
-- **@maritaca/worker**: BullMQ worker for processing notifications
-- **@maritaca/sdk**: TypeScript client library
+| Package | Description |
+|---------|-------------|
+| **@maritaca/core** | Types, validation, database schema, audit service |
+| **@maritaca/api** | Fastify HTTP API server |
+| **@maritaca/worker** | BullMQ workers for notifications and maintenance |
+| **@maritaca/sdk** | TypeScript client library |
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Client    │────▶│  API Server │────▶│    Redis    │
+│  (SDK/HTTP) │     │  (Fastify)  │     │  (BullMQ)   │
+└─────────────┘     └─────────────┘     └──────┬──────┘
+                           │                   │
+                           ▼                   ▼
+                    ┌─────────────┐     ┌─────────────┐
+                    │  PostgreSQL │◀────│   Worker    │
+                    │  (messages) │     │ (providers) │
+                    └─────────────┘     └─────────────┘
+```
 
 ## Quick Start
 
@@ -34,77 +51,30 @@ Maritaca is built as a monorepo with 4 packages:
 - Node.js 22 LTS
 - pnpm 8+
 - Docker and Docker Compose
-- PostgreSQL 15
-- Redis 7
 
 ### Installation
 
-1. Clone the repository:
-
 ```bash
+# Clone and install
 git clone https://github.com/trentas/maritaca.git
 cd maritaca
-```
-
-2. Install dependencies:
-
-```bash
 pnpm install
-```
 
-3. Set up environment variables:
-
-Copy the example environment file and update with your values:
-
-```bash
+# Configure environment
 cp .env.example .env
-```
+# Edit .env with your settings (see .env.example for all options)
 
-Or create a `.env` file manually with the following variables:
-
-```bash
-# Database Configuration
-DATABASE_URL=postgresql://maritaca:maritaca@localhost:5432/maritaca
-
-# Redis Configuration
-REDIS_URL=redis://localhost:6379
-
-# API Configuration
-PORT=7377
-HOST=0.0.0.0
-LOG_LEVEL=info
-
-# Slack Provider (optional)
-SLACK_BOT_TOKEN=xoxb-your-slack-bot-token-here
-```
-
-4. Start services with Docker Compose:
-
-```bash
+# Start services
 docker-compose up -d
-```
 
-This will start:
-- PostgreSQL database
-- Redis queue
-- API server (port 7377)
-- Worker service
-
-5. Run database migrations:
-
-```bash
+# Run migrations
 cd packages/core && pnpm db:push && cd ../..
-```
 
-6. Create an API key (from the project root):
-
-```bash
+# Create API key
 pnpm create-api-key
 ```
 
-This will generate an API key that you'll need to authenticate requests. Save the key as it won't be shown again.
-
-### Using the SDK
+### Send your first notification
 
 ```typescript
 import { Maritaca } from '@maritaca/sdk'
@@ -114,133 +84,251 @@ const maritaca = new Maritaca({
   baseUrl: 'http://localhost:7377'
 })
 
+// Send via Slack
 await maritaca.messages.send({
-  idempotencyKey: 'order-123-paid',
+  idempotencyKey: 'order-123-confirmed',
   channels: ['slack'],
-  sender: { name: 'Acme' },
-  recipient: { slack: { userId: 'U01ABC' } },
+  sender: { name: 'Acme Store' },
+  recipient: { 
+    slack: { userId: 'U01ABC123' }  // or channelName: 'orders'
+  },
   payload: {
-    text: 'Order paid successfully'
+    title: 'Order Confirmed',
+    text: 'Your order #123 has been confirmed!'
+  }
+})
+
+// Send via Email
+await maritaca.messages.send({
+  idempotencyKey: 'welcome-user-456',
+  channels: ['email'],
+  sender: { 
+    name: 'Acme Store',
+    email: 'hello@acme.com'
+  },
+  recipient: { 
+    email: 'customer@example.com'
+  },
+  payload: {
+    title: 'Welcome to Acme!',
+    text: 'Thanks for signing up.',
+    html: '<h1>Welcome!</h1><p>Thanks for signing up.</p>'
   }
 })
 ```
 
-## Development
-
-### Building
+### Using cURL
 
 ```bash
-pnpm build
+# Send Slack message
+curl -X POST http://localhost:7377/v1/messages \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "idempotencyKey": "test-123",
+    "channels": ["slack"],
+    "sender": { "name": "Test" },
+    "recipient": { "slack": { "channelName": "general" } },
+    "payload": { "text": "Hello from Maritaca!" }
+  }'
+
+# Send email via Resend
+curl -X POST http://localhost:7377/v1/messages \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "idempotencyKey": "email-456",
+    "channels": ["email"],
+    "sender": { "name": "Acme", "email": "noreply@acme.com" },
+    "recipient": { "email": "user@example.com" },
+    "payload": { 
+      "title": "Welcome!", 
+      "text": "Thanks for joining." 
+    }
+  }'
 ```
 
-### Testing
+## Providers
 
-Run all tests:
+### Email Providers
 
-```bash
-pnpm test
-```
+| Provider | Description | Required Config |
+|----------|-------------|-----------------|
+| **mock** | Logs emails (development) | None |
+| **resend** | [Resend](https://resend.com) API | `RESEND_API_KEY` |
+| **ses** | AWS Simple Email Service | `AWS_REGION`, credentials |
 
-Run tests with coverage:
+Set `EMAIL_PROVIDER` environment variable to choose (default: `mock`).
 
-```bash
-pnpm test:coverage
-```
+### Slack Provider
 
-Coverage threshold is set to 80% minimum.
+Send messages to users or channels with multiple recipient options:
 
-### Running Locally
+| Recipient Type | Example | Description |
+|----------------|---------|-------------|
+| `userId` | `U01ABC123` | Direct message to user |
+| `channelId` | `C01XYZ789` | Post to channel by ID |
+| `channelName` | `general` | Post to channel by name |
+| `email` | `user@company.com` | Lookup user by email, send DM |
 
-Start the API server:
+Features:
+- LRU cache for email→userId lookups (configurable size/TTL)
+- Automatic retry with exponential backoff for rate limits
+- Custom Slack blocks support via `overrides.slack.blocks`
 
-```bash
-cd packages/api
-pnpm dev
-```
-
-Start the worker:
-
-```bash
-cd packages/worker
-pnpm dev
-```
+Required: `SLACK_BOT_TOKEN` with scopes `chat:write`, `users:read.email`
 
 ## API Endpoints
 
 ### POST /v1/messages
 
-Create a new message.
+Create and send a notification.
 
-**Request:**
 ```json
 {
   "idempotencyKey": "unique-key",
-  "channels": ["slack"],
-  "sender": { "name": "Acme" },
-  "recipient": { "slack": { "userId": "U01ABC" } },
+  "channels": ["email", "slack"],
+  "sender": { 
+    "name": "Acme",
+    "email": "noreply@acme.com"
+  },
+  "recipient": { 
+    "email": "user@example.com",
+    "slack": { "userId": "U01ABC" }
+  },
   "payload": {
-    "text": "Hello, world!"
+    "title": "Order Shipped",
+    "text": "Your order is on the way!",
+    "html": "<p>Your order is on the way!</p>"
+  },
+  "overrides": {
+    "email": { "subject": "Custom Subject" },
+    "slack": { "blocks": [...] }
   }
-}
-```
-
-**Response:**
-```json
-{
-  "messageId": "msg_123",
-  "status": "pending",
-  "channels": ["slack"]
 }
 ```
 
 ### GET /v1/messages/:id
 
-Get message status and events.
+Get message status and delivery events.
 
-**Response:**
-```json
-{
-  "id": "msg_123",
-  "status": "delivered",
-  "envelope": { ... },
-  "events": [ ... ]
-}
+### GET /health
+
+Health check endpoint for load balancers.
+
+## Compliance (GDPR/LGPD)
+
+Maritaca includes built-in compliance features:
+
+### Audit Logs
+
+- **Separate audit trail**: All notifications logged with full context
+- **Encrypted PII**: Recipient data encrypted at rest (AES-256-GCM)
+- **Partitioned storage**: Monthly partitions for efficient data management
+- **DSAR support**: Query logs by subject ID for data access requests
+
+### PII Handling
+
+| Log Type | PII Treatment | Destination |
+|----------|---------------|-------------|
+| System logs | Masked (`u***@example.com`) | stdout/OTLP |
+| Audit logs | Encrypted | PostgreSQL |
+
+### Data Retention
+
+Automatic partition maintenance via BullMQ:
+- Creates future partitions (default: 3 months ahead)
+- Drops old partitions (default: after 12 months)
+- Configurable via `AUDIT_RETENTION_MONTHS`
+
+### Configuration
+
+```bash
+# Generate encryption key
+openssl rand -base64 32
+
+# Add to .env
+AUDIT_ENCRYPTION_KEY=your-generated-key
+AUDIT_RETENTION_MONTHS=12
 ```
-
-## Providers
-
-### Slack Provider
-
-Real Slack API integration. Requires a Slack bot token.
-
-**Configuration:**
-- Set `SLACK_BOT_TOKEN` environment variable, or
-- Provide `botToken` in the sender's `slack` field
-
-### Email Provider (Mock)
-
-Currently a mock provider that logs messages. Real email providers (Resend, SMTP) coming soon.
-
-## Environment Variables
-
-Required:
-
-- `DATABASE_URL`: PostgreSQL connection string
-- `REDIS_URL`: Redis connection string
-- `PORT`: API server port (default: 7377)
-- `HOST`: API server host (default: 0.0.0.0)
-- `LOG_LEVEL`: Logging level (default: info)
-- `SLACK_BOT_TOKEN`: Slack bot token (optional, can be provided per message)
-
-Optional (OpenTelemetry / observability): `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, `OTEL_EXPORTER_OTLP_INSECURE`. See [docs/observability.md](./docs/observability.md) for OpenTelemetry configuration.
 
 ## Observability
 
-Traces, metrics and logs are exported via OpenTelemetry (OTLP) when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. [docs/observability.md](./docs/observability.md) explains how to configure OpenTelemetry with Maritaca.
+Built-in OpenTelemetry support for traces, metrics, and logs.
 
-## Logo and assets
+```bash
+# Enable by setting OTLP endpoint
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
 
-Logo, icon, favicon and app icon sources (SVG) and how to generate `favicon.ico` and PNGs: [assets/](assets/README.md).
+Traces include:
+- Message processing lifecycle
+- Provider send operations
+- Email lookups and cache hits
+- Database operations
+
+See [docs/observability.md](./docs/observability.md) for detailed setup.
+
+## Environment Variables
+
+All configuration is done via environment variables. See [.env.example](./.env.example) for the complete list with documentation.
+
+Key variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `REDIS_URL` | Yes | Redis connection string |
+| `SLACK_BOT_TOKEN` | For Slack | Slack bot token |
+| `EMAIL_PROVIDER` | No | `mock`, `resend`, or `ses` |
+| `RESEND_API_KEY` | For Resend | Resend API key |
+| `AWS_REGION` | For SES | AWS region |
+| `AUDIT_ENCRYPTION_KEY` | Production | PII encryption key |
+
+## Development
+
+```bash
+# Build all packages
+pnpm build
+
+# Run tests
+pnpm test
+
+# Run with coverage (80% threshold)
+pnpm test:coverage
+
+# Start API in dev mode
+cd packages/api && pnpm dev
+
+# Start worker in dev mode
+cd packages/worker && pnpm dev
+```
+
+## Project Structure
+
+```
+maritaca/
+├── packages/
+│   ├── core/           # Shared types, validation, database
+│   │   ├── src/
+│   │   │   ├── audit/      # Audit service, encryption, partitions
+│   │   │   ├── db/         # Schema, migrations, client
+│   │   │   ├── logger/     # Pino logger, PII masking
+│   │   │   ├── types/      # TypeScript types
+│   │   │   └── validation/ # Zod schemas
+│   │   └── ...
+│   ├── api/            # Fastify HTTP server
+│   ├── worker/         # BullMQ notification workers
+│   │   ├── src/
+│   │   │   ├── processors/ # Message, maintenance processors
+│   │   │   ├── providers/  # Email, Slack providers
+│   │   │   └── queues/     # Queue definitions
+│   │   └── ...
+│   └── sdk/            # TypeScript client
+├── docs/               # Documentation
+├── scripts/            # Utility scripts
+└── docker-compose.yml  # Local development setup
+```
 
 ## License
 
