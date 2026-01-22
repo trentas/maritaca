@@ -8,7 +8,7 @@ import type {
   SendOptions,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
-import { createSyncLogger } from '@maritaca/core'
+import { createSyncLogger, maskLogData } from '@maritaca/core'
 import { SESClient, SendEmailCommand, GetAccountCommand } from '@aws-sdk/client-ses'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
@@ -216,13 +216,13 @@ export class SESProvider implements Provider {
 
       try {
         this.logger.info(
-          {
+          maskLogData({
             provider: 'ses',
             messageId,
             to: recipients,
             from,
             subject,
-          },
+          }),
           '📧 [SES] Sending email',
         )
 

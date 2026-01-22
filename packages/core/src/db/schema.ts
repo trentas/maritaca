@@ -2,6 +2,7 @@ import { pgTable, text, timestamp, jsonb, varchar, pgEnum, index } from 'drizzle
 import { createId } from '@paralleldrive/cuid2'
 import type { Envelope } from '../types/envelope.js'
 import type { MessageStatus, AttemptStatus, EventType } from '../types/event.js'
+import type { AuditAction, AuditActorType } from '../types/audit.js'
 
 /**
  * Message status enum
@@ -101,6 +102,48 @@ export const apiKeys = pgTable('api_keys', {
   keyPrefixIdx: index('api_keys_key_prefix_idx').on(table.keyPrefix),
 }))
 
+/**
+ * Audit Logs table
+ * Partitioned by created_at for efficient sharding
+ * Contains encrypted PII data for GDPR/LGPD compliance
+ * 
+ * Note: This table is partitioned in PostgreSQL. The partitions are
+ * created via raw SQL migration (0004_create_audit_logs.sql).
+ * Drizzle ORM works with the parent table; PostgreSQL handles routing.
+ */
+export const auditLogs = pgTable('audit_logs', {
+  id: text('id')
+    .notNull()
+    .$defaultFn(() => createId()),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  
+  // Event classification
+  action: varchar('action', { length: 100 }).$type<AuditAction>().notNull(),
+  
+  // Actor
+  actorType: varchar('actor_type', { length: 50 }).$type<AuditActorType>().notNull(),
+  actorId: text('actor_id').notNull(),
+  
+  // Subject (for DSAR queries)
+  subjectType: varchar('subject_type', { length: 50 }),
+  subjectId: text('subject_id'),
+  
+  // Resource
+  resourceType: varchar('resource_type', { length: 50 }).notNull(),
+  resourceId: text('resource_id').notNull(),
+  
+  // Context
+  projectId: varchar('project_id', { length: 255 }).notNull(),
+  requestId: text('request_id'),
+  traceId: text('trace_id'),
+  
+  // Data
+  piiData: jsonb('pii_data'),  // encrypted
+  metadata: jsonb('metadata'),
+}, (table) => ({
+  // Note: Indexes are created in the migration file for partitioned tables
+}))
+
 export type Message = typeof messages.$inferSelect
 export type NewMessage = typeof messages.$inferInsert
 export type Attempt = typeof attempts.$inferSelect
@@ -109,3 +152,5 @@ export type Event = typeof events.$inferSelect
 export type NewEvent = typeof events.$inferInsert
 export type ApiKey = typeof apiKeys.$inferSelect
 export type NewApiKey = typeof apiKeys.$inferInsert
+export type AuditLogRecord = typeof auditLogs.$inferSelect
+export type NewAuditLog = typeof auditLogs.$inferInsert

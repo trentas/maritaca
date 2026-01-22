@@ -8,7 +8,7 @@ import type {
   SendOptions,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
-import { createSyncLogger } from '@maritaca/core'
+import { createSyncLogger, maskLogData } from '@maritaca/core'
 import { Resend } from 'resend'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
@@ -191,13 +191,13 @@ export class ResendProvider implements Provider {
 
       try {
         this.logger.info(
-          {
+          maskLogData({
             provider: 'resend',
             messageId,
             to,
             from,
             subject,
-          },
+          }),
           '📧 [RESEND] Sending email',
         )
 

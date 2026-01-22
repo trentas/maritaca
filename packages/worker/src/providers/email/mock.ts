@@ -8,7 +8,7 @@ import type {
   SendOptions,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
-import { createSyncLogger } from '@maritaca/core'
+import { createSyncLogger, maskLogData } from '@maritaca/core'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
 /**
@@ -314,7 +314,7 @@ export class MockEmailProvider implements Provider {
 
       // Mock email sending - log with structured logger
       this.logger.info(
-        {
+        maskLogData({
           provider: 'mock-email',
           messageId,
           mock: true,
@@ -322,7 +322,7 @@ export class MockEmailProvider implements Provider {
           from,
           subject,
           bodyLength: text?.length || 0,
-        },
+        }),
         '📧 [MOCK EMAIL] Sending email notification',
       )
 
