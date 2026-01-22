@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import type { Provider, Envelope, PreparedMessage, ProviderResponse } from '../../providers/base.js'
-import type { Channel } from '../../types/envelope.js'
+import type { Provider } from '../../providers/base.js'
+import type { PreparedMessage, ProviderResponse } from '../../providers/types.js'
+import type { Channel, Envelope } from '../../types/envelope.js'
 
 describe('Provider Interface', () => {
   class MockProvider implements Provider {

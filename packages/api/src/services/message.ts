@@ -1,7 +1,6 @@
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { createId } from '@paralleldrive/cuid2'
 import type { Envelope } from '@maritaca/core'
-import { validateEnvelope } from '@maritaca/core'
 import { messages, events, type DbClient } from '@maritaca/core'
 
 export interface CreateMessageResult {
@@ -10,67 +9,89 @@ export interface CreateMessageResult {
   channels: string[]
 }
 
+export interface CreateMessageOptions {
+  db: DbClient
+  envelope: Envelope
+  projectId: string
+}
+
 /**
  * Create a new message with idempotency checking
+ * Uses INSERT ... ON CONFLICT to handle race conditions atomically
  */
 export async function createMessage(
-  db: DbClient,
-  envelope: Envelope,
+  options: CreateMessageOptions,
 ): Promise<CreateMessageResult> {
-  // Validate envelope
-  const validatedEnvelope = validateEnvelope(envelope)
+  const { db, envelope, projectId } = options
 
-  // Check for existing message with same idempotency key
-  const existing = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.idempotencyKey, validatedEnvelope.idempotencyKey))
-    .limit(1)
-
-  if (existing.length > 0) {
-    // Return existing message
-    return {
-      messageId: existing[0].id,
-      status: existing[0].status,
-      channels: validatedEnvelope.channels,
-    }
-  }
-
-  // Create new message
   const messageId = createId()
-  const [message] = await db
+
+  // Attempt to insert - ON CONFLICT DO NOTHING handles race conditions
+  const inserted = await db
     .insert(messages)
     .values({
       id: messageId,
-      idempotencyKey: validatedEnvelope.idempotencyKey,
-      envelope: validatedEnvelope,
+      projectId,
+      idempotencyKey: envelope.idempotencyKey,
+      envelope,
       status: 'pending',
+    })
+    .onConflictDoNothing({
+      target: [messages.projectId, messages.idempotencyKey],
     })
     .returning()
 
-  // Emit message.accepted event
-  await db.insert(events).values({
-    id: createId(),
-    messageId: message.id,
-    type: 'message.accepted',
-    payload: {
-      envelope: validatedEnvelope,
-    },
-  })
+  // If insert succeeded, emit event and return new message
+  if (inserted.length > 0) {
+    const message = inserted[0]
+
+    await db.insert(events).values({
+      id: createId(),
+      messageId: message.id,
+      type: 'message.accepted',
+      payload: {
+        envelope,
+      },
+    })
+
+    return {
+      messageId: message.id,
+      status: message.status,
+      channels: envelope.channels,
+    }
+  }
+
+  // Insert was skipped due to conflict - fetch existing message
+  const [existing] = await db
+    .select()
+    .from(messages)
+    .where(
+      and(
+        eq(messages.projectId, projectId),
+        eq(messages.idempotencyKey, envelope.idempotencyKey),
+      ),
+    )
+    .limit(1)
 
   return {
-    messageId: message.id,
-    status: message.status,
-    channels: validatedEnvelope.channels,
+    messageId: existing.id,
+    status: existing.status,
+    channels: envelope.channels,
   }
+}
+
+export interface GetMessageOptions {
+  db: DbClient
+  messageId: string
+  projectId: string
 }
 
 /**
  * Get message by ID with events
+ * Only returns messages belonging to the specified project
  */
 export async function getMessage(
-  db: DbClient,
-  messageId: string,
+  options: GetMessageOptions,
 ): Promise<{
   id: string
   status: string
@@ -84,10 +105,17 @@ export async function getMessage(
     createdAt: Date
   }>
 } | null> {
+  const { db, messageId, projectId } = options
+
   const [message] = await db
     .select()
     .from(messages)
-    .where(eq(messages.id, messageId))
+    .where(
+      and(
+        eq(messages.id, messageId),
+        eq(messages.projectId, projectId),
+      ),
+    )
     .limit(1)
 
   if (!message) {

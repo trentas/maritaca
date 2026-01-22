@@ -31,13 +31,13 @@ describe('Envelope Types', () => {
       expect(sender.email).toBe('sender@example.com')
     })
 
-    it('should accept sender with Slack config', () => {
+    it('should accept sender with name and email only (no secrets)', () => {
       const sender: Sender = {
-        slack: {
-          botToken: 'xoxb-token',
-        },
+        name: 'Bot',
+        email: 'bot@example.com',
       }
-      expect(sender.slack?.botToken).toBe('xoxb-token')
+      expect(sender.name).toBe('Bot')
+      expect(sender.email).toBe('bot@example.com')
     })
   })
 

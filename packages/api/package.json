@@ -18,6 +18,7 @@
     "@maritaca/core": "workspace:*",
     "fastify": "^4.26.0",
     "@fastify/env": "^4.2.0",
+    "@fastify/rate-limit": "^9.1.0",
     "bullmq": "^5.0.0",
     "ioredis": "^5.3.0",
     "bcrypt": "^5.1.1",

@@ -20,9 +20,17 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const envelope = validateEnvelope(request.body)
       const db = request.server.db
+      const projectId = request.projectId
+
+      if (!projectId) {
+        return reply.code(401).send({
+          error: 'Unauthorized',
+          message: 'Project ID not found in request',
+        })
+      }
 
       // Create message
-      const result = await createMessage(db, envelope)
+      const result = await createMessage({ db, envelope, projectId })
 
       // Enqueue for processing
       await enqueueMessage(queue, result.messageId, envelope)
@@ -69,8 +77,16 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const { id } = request.params
       const db = request.server.db
+      const projectId = request.projectId
 
-      const message = await getMessage(db, id)
+      if (!projectId) {
+        return reply.code(401).send({
+          error: 'Unauthorized',
+          message: 'Project ID not found in request',
+        })
+      }
+
+      const message = await getMessage({ db, messageId: id, projectId })
 
       if (!message) {
         return reply.code(404).send({

@@ -5,17 +5,16 @@ export type Channel = 'email' | 'slack' | 'push' | 'web' | 'sms'
 
 /**
  * Sender information for notifications
+ * 
+ * Note: Sensitive credentials (like API tokens) should NOT be included here.
+ * They are stored in the database and should be configured via environment
+ * variables or secure project configuration.
  */
 export interface Sender {
   /** Sender name */
   name?: string
   /** Sender email address */
   email?: string
-  /** Slack-specific sender configuration */
-  slack?: {
-    /** Slack bot token (optional, can be provided per message) */
-    botToken?: string
-  }
 }
 
 /**

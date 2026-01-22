@@ -1,6 +1,6 @@
 import { trace } from '@opentelemetry/api'
 import { Worker } from 'bullmq'
-import { createDbClient, createLogger, type Logger } from '@maritaca/core'
+import { createDbClient, createLogger, parseRedisUrl, type Logger } from '@maritaca/core'
 import { processMessageJob } from './processors/message.js'
 
 export interface WorkerOptions {
@@ -15,12 +15,7 @@ export interface WorkerOptions {
 export async function createWorker(options: WorkerOptions): Promise<Worker> {
   const logger = options.logger ?? await createLogger({ serviceName: 'maritaca-worker' })
   
-  const url = new URL(options.redisUrl)
-  const connection = {
-    host: url.hostname,
-    port: parseInt(url.port || '6379', 10),
-    ...(url.password && { password: url.password }),
-  }
+  const connection = parseRedisUrl(options.redisUrl)
 
   const db = createDbClient(options.databaseUrl)
 

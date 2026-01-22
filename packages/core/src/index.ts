@@ -38,3 +38,6 @@ export { messages, attempts, events, apiKeys } from './db/schema.js'
 
 // Logger
 export { createLogger, createSyncLogger, createChildLogger, type Logger } from './logger/index.js'
+
+// Redis
+export { parseRedisUrl, type RedisConnectionConfig } from './redis/index.js'

@@ -33,12 +33,16 @@ export const messages = pgTable('messages', {
   id: text('id')
     .primaryKey()
     .$defaultFn(() => createId()),
-  idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull().unique(),
+  projectId: varchar('project_id', { length: 255 }).notNull(),
+  idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull(),
   envelope: jsonb('envelope').$type<Envelope>().notNull(),
   status: messageStatusEnum('status').notNull().default('pending'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-})
+}, (table) => ({
+  projectIdIdx: index('messages_project_id_idx').on(table.projectId),
+  idempotencyIdx: index('messages_idempotency_idx').on(table.projectId, table.idempotencyKey),
+}))
 
 /**
  * Attempts table
@@ -57,7 +61,9 @@ export const attempts = pgTable('attempts', {
   error: text('error'),
   startedAt: timestamp('started_at'),
   finishedAt: timestamp('finished_at'),
-})
+}, (table) => ({
+  messageIdIdx: index('attempts_message_id_idx').on(table.messageId),
+}))
 
 /**
  * Events table
@@ -75,7 +81,9 @@ export const events = pgTable('events', {
   provider: varchar('provider', { length: 100 }),
   payload: jsonb('payload'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-})
+}, (table) => ({
+  messageIdCreatedAtIdx: index('events_message_id_created_at_idx').on(table.messageId, table.createdAt),
+}))
 
 /**
  * API Keys table

@@ -8,15 +8,12 @@ export const channelSchema = z.enum(['email', 'slack', 'push', 'web', 'sms'])
 
 /**
  * Sender schema
+ * Note: Sensitive credentials (like API tokens) should NOT be included here.
+ * They should be configured via environment variables or secure project configuration.
  */
 export const senderSchema = z.object({
   name: z.string().optional(),
   email: z.string().email().optional(),
-  slack: z
-    .object({
-      botToken: z.string().optional(),
-    })
-    .optional(),
 })
 
 /**
