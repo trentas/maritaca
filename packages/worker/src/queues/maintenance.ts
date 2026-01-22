@@ -49,7 +49,7 @@ export async function scheduleMaintenanceJobs(
   },
 ): Promise<void> {
   const {
-    partitionMaintenanceCron = '0 3 * * *', // 3:00 AM every day
+    partitionMaintenanceCron = process.env.AUDIT_MAINTENANCE_CRON || '0 3 * * *', // 3:00 AM every day
     monthsAhead = parseInt(process.env.AUDIT_PARTITION_MONTHS_AHEAD || '3'),
     retentionMonths = parseInt(process.env.AUDIT_RETENTION_MONTHS || '12'),
   } = options ?? {}
