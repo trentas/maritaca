@@ -33,12 +33,37 @@ export const slackRecipientSchema = z
   )
 
 /**
+ * SMS recipient schema (E.164 phone number format)
+ */
+export const smsRecipientSchema = z.object({
+  phoneNumber: z
+    .string()
+    .regex(/^\+[1-9]\d{1,14}$/, 'Phone number must be in E.164 format (e.g., +5511999999999)'),
+})
+
+/**
+ * Push notification recipient schema
+ */
+export const pushRecipientSchema = z
+  .object({
+    endpointArn: z.string().optional(),
+    deviceToken: z.string().optional(),
+    platform: z.enum(['APNS', 'APNS_SANDBOX', 'GCM']).optional(),
+  })
+  .refine(
+    (data) => data.endpointArn || (data.deviceToken && data.platform),
+    { message: 'Either endpointArn or both deviceToken and platform must be provided' }
+  )
+
+/**
  * Recipient schema
  */
 export const recipientSchema = z.object({
   userId: z.string().optional(),
   email: z.string().email().optional(),
   slack: slackRecipientSchema.optional(),
+  sms: smsRecipientSchema.optional(),
+  push: pushRecipientSchema.optional(),
 })
 
 /**
@@ -56,6 +81,11 @@ export const payloadSchema = z.object({
 export const emailProviderSchema = z.enum(['resend', 'ses', 'mock'])
 
 /**
+ * SMS message type schema
+ */
+export const smsMessageTypeSchema = z.enum(['Transactional', 'Promotional'])
+
+/**
  * Channel overrides schema
  */
 export const channelOverridesSchema = z.object({
@@ -68,6 +98,20 @@ export const channelOverridesSchema = z.object({
   slack: z
     .object({
       blocks: z.array(z.any()).optional(),
+    })
+    .optional(),
+  sms: z
+    .object({
+      messageType: smsMessageTypeSchema.optional(),
+      senderId: z.string().max(11, 'Sender ID must be 11 characters or less').optional(),
+    })
+    .optional(),
+  push: z
+    .object({
+      badge: z.number().int().min(0).optional(),
+      sound: z.string().optional(),
+      data: z.record(z.any()).optional(),
+      ttl: z.number().int().min(0).optional(),
     })
     .optional(),
 })

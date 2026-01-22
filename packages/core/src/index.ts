@@ -3,12 +3,15 @@ export type {
   Channel,
   Sender,
   SlackRecipient,
+  SmsRecipient,
+  PushRecipient,
   Recipient,
   Payload,
   ChannelOverrides,
   MessagePriority,
   Envelope,
   EmailProviderType,
+  SnsMessageType,
 } from './types/envelope.js'
 
 export type {

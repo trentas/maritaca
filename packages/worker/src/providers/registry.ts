@@ -1,6 +1,8 @@
 import type { Provider, Channel, Logger, EmailProviderType } from '@maritaca/core'
 import { SlackProvider } from './slack.js'
 import { createEmailProvider } from './email/index.js'
+import { createSmsProvider } from './sms/index.js'
+import { createPushProvider } from './push/index.js'
 
 /**
  * Provider registry - singleton instances of providers
@@ -45,9 +47,13 @@ class ProviderRegistry {
       case 'email':
         provider = createEmailProvider(emailProvider, { logger: this.logger })
         break
-      case 'push':
-      case 'web':
       case 'sms':
+        provider = createSmsProvider(null, { logger: this.logger })
+        break
+      case 'push':
+        provider = createPushProvider(null, { logger: this.logger })
+        break
+      case 'web':
         // Not implemented yet
         provider = null
         break

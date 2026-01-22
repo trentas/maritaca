@@ -33,6 +33,26 @@ export interface SlackRecipient {
 }
 
 /**
+ * SMS recipient information (via AWS SNS)
+ */
+export interface SmsRecipient {
+  /** Phone number in E.164 format (e.g., +5511999999999) */
+  phoneNumber: string
+}
+
+/**
+ * Push notification recipient information (via AWS SNS)
+ */
+export interface PushRecipient {
+  /** SNS Platform Application Endpoint ARN */
+  endpointArn?: string
+  /** Device token (requires platform to be specified) */
+  deviceToken?: string
+  /** Platform for device token: APNS, APNS_SANDBOX, GCM (Firebase) */
+  platform?: 'APNS' | 'APNS_SANDBOX' | 'GCM'
+}
+
+/**
  * Recipient information for notifications
  */
 export interface Recipient {
@@ -42,6 +62,10 @@ export interface Recipient {
   email?: string
   /** Slack-specific recipient information */
   slack?: SlackRecipient
+  /** SMS recipient (phone number) */
+  sms?: SmsRecipient
+  /** Push notification recipient */
+  push?: PushRecipient
 }
 
 /**
@@ -62,6 +86,11 @@ export interface Payload {
 export type EmailProviderType = 'resend' | 'ses' | 'mock'
 
 /**
+ * SNS SMS message type
+ */
+export type SnsMessageType = 'Transactional' | 'Promotional'
+
+/**
  * Channel-specific overrides for message content
  */
 export interface ChannelOverrides {
@@ -76,6 +105,24 @@ export interface ChannelOverrides {
   slack?: {
     /** Slack block kit blocks */
     blocks?: any[]
+  }
+  /** SMS-specific overrides */
+  sms?: {
+    /** SMS message type: Transactional (higher delivery) or Promotional (default) */
+    messageType?: SnsMessageType
+    /** Sender ID (alphanumeric, max 11 chars, not supported in all countries) */
+    senderId?: string
+  }
+  /** Push notification overrides */
+  push?: {
+    /** Badge count for iOS */
+    badge?: number
+    /** Sound to play */
+    sound?: string
+    /** Custom data payload */
+    data?: Record<string, any>
+    /** Time to live in seconds */
+    ttl?: number
   }
 }
 

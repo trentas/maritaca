@@ -17,6 +17,7 @@
   "dependencies": {
     "@appsignal/opentelemetry-instrumentation-bullmq": "^0.7.0",
     "@aws-sdk/client-ses": "^3.0.0",
+    "@aws-sdk/client-sns": "^3.972.0",
     "@maritaca/core": "workspace:*",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.57.0",
