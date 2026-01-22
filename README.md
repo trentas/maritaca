@@ -51,6 +51,8 @@ Maritaca is built as a monorepo with 4 packages:
 - Node.js 22 LTS
 - pnpm 8+
 - Docker and Docker Compose
+- PostgreSQL 15+
+- Redis 7+
 
 ### Installation
 
