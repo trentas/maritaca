@@ -254,4 +254,19 @@ describe('MockEmailProvider', () => {
       expect(events[0].payload?.error).toEqual(response.error)
     })
   })
+
+  describe('healthCheck', () => {
+    it('should always return ok for mock provider', async () => {
+      const result = await provider.healthCheck()
+      expect(result.ok).toBe(true)
+      expect(result.details?.mock).toBe(true)
+    })
+
+    it('should include simulation settings in health check', async () => {
+      provider.setSimulation({ delayMs: 100 })
+      const result = await provider.healthCheck()
+      expect(result.ok).toBe(true)
+      expect(result.details?.simulation?.delayMs).toBe(100)
+    })
+  })
 })

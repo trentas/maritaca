@@ -266,4 +266,11 @@ describe('ResendProvider', () => {
       expect(events[0].provider).toBe('resend')
     })
   })
+
+  describe('healthCheck', () => {
+    it('should have healthCheck method', () => {
+      const provider = new ResendProvider()
+      expect(typeof provider.healthCheck).toBe('function')
+    })
+  })
 })

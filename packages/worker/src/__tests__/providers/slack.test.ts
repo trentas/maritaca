@@ -238,6 +238,7 @@ describe('Slack Provider', () => {
     it('should start with empty cache', () => {
       const stats = provider.getEmailCacheStats()
       expect(stats.size).toBe(0)
+      expect(stats.maxSize).toBe(1000) // default max size
       expect(stats.emails).toHaveLength(0)
     })
 
@@ -249,9 +250,13 @@ describe('Slack Provider', () => {
       expect(stats.size).toBe(0)
     })
 
-    it('should accept custom cache TTL', () => {
-      const customProvider = new SlackProvider({ cacheTtlMs: 60000 })
-      expect(customProvider).toBeInstanceOf(SlackProvider)
+    it('should accept custom cache size and TTL', () => {
+      const customProvider = new SlackProvider({ 
+        cacheMaxSize: 500,
+        cacheTtlMs: 60000,
+      })
+      const stats = customProvider.getEmailCacheStats()
+      expect(stats.maxSize).toBe(500)
     })
 
     it('should accept custom retry config', () => {
@@ -260,6 +265,20 @@ describe('Slack Provider', () => {
         cacheTtlMs: 30000,
       })
       expect(customProvider).toBeInstanceOf(SlackProvider)
+    })
+  })
+
+  describe('healthCheck', () => {
+    it('should return error when SLACK_BOT_TOKEN is not set', async () => {
+      delete process.env.SLACK_BOT_TOKEN
+      
+      const result = await provider.healthCheck()
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('SLACK_BOT_TOKEN')
+    })
+
+    it('should have healthCheck method', () => {
+      expect(typeof provider.healthCheck).toBe('function')
     })
   })
 })

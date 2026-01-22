@@ -360,4 +360,11 @@ describe('SESProvider', () => {
       expect(events[0].provider).toBe('ses')
     })
   })
+
+  describe('healthCheck', () => {
+    it('should have healthCheck method', () => {
+      const provider = new SESProvider()
+      expect(typeof provider.healthCheck).toBe('function')
+    })
+  })
 })

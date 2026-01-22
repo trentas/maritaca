@@ -9,6 +9,15 @@ import { SESProvider } from './ses.js'
 export type EmailProviderType = 'resend' | 'ses' | 'mock'
 
 /**
+ * Health check result (common to all providers)
+ */
+export interface HealthCheckResult {
+  ok: boolean
+  error?: string
+  details?: Record<string, any>
+}
+
+/**
  * Options for creating an email provider
  */
 export interface CreateEmailProviderOptions {
@@ -21,6 +30,17 @@ export interface CreateEmailProviderOptions {
  * @param providerType - The type of email provider to create
  * @param options - Options to pass to the provider
  * @returns The email provider instance
+ * 
+ * @example
+ * ```typescript
+ * // Use environment variable EMAIL_PROVIDER
+ * const provider = createEmailProvider()
+ * 
+ * // Explicitly specify provider
+ * const resendProvider = createEmailProvider('resend')
+ * const sesProvider = createEmailProvider('ses')
+ * const mockProvider = createEmailProvider('mock')
+ * ```
  */
 export function createEmailProvider(
   providerType?: EmailProviderType | null,

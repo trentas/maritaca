@@ -8,6 +8,7 @@ import type {
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
 import { createSyncLogger } from '@maritaca/core'
+import { trace, SpanStatusCode } from '@opentelemetry/api'
 
 /**
  * Simulation options for testing different scenarios
@@ -48,9 +49,35 @@ export interface MockEmailProviderOptions {
 }
 
 /**
+ * Health check result
+ */
+export interface HealthCheckResult {
+  ok: boolean
+  error?: string
+  details?: Record<string, any>
+}
+
+const tracer = trace.getTracer('maritaca-mock-email-provider')
+
+/**
  * Mock email provider implementation
- * Logs messages instead of actually sending them
- * Supports simulation options for testing failure scenarios
+ * 
+ * Logs messages instead of actually sending them.
+ * Supports simulation options for testing failure scenarios.
+ * Includes OpenTelemetry tracing for consistency with real providers.
+ * 
+ * @example
+ * ```typescript
+ * const provider = new MockEmailProvider({
+ *   simulation: {
+ *     delayMs: 100,           // Simulate 100ms network delay
+ *     failureRate: 0.1,       // 10% chance of random failure
+ *     recipientErrors: {
+ *       'bad@example.com': 'Mailbox not found',
+ *     },
+ *   },
+ * })
+ * ```
  */
 export class MockEmailProvider implements Provider {
   channel = 'email' as const
@@ -84,6 +111,7 @@ export class MockEmailProvider implements Provider {
 
   /**
    * Validate that the envelope can be sent via email
+   * @throws {Error} If validation fails
    */
   validate(envelope: Envelope): void {
     const recipients = Array.isArray(envelope.recipient)
@@ -100,6 +128,7 @@ export class MockEmailProvider implements Provider {
 
   /**
    * Prepare envelope for email (mock)
+   * @throws {Error} If no valid recipients found
    */
   prepare(envelope: Envelope): PreparedMessage {
     const recipients = Array.isArray(envelope.recipient)
@@ -134,140 +163,177 @@ export class MockEmailProvider implements Provider {
   }
 
   /**
+   * Check if the mock provider is ready (always returns ok)
+   */
+  async healthCheck(): Promise<HealthCheckResult> {
+    return {
+      ok: true,
+      details: {
+        mock: true,
+        simulation: this.simulation,
+      },
+    }
+  }
+
+  /**
    * Send email (mock - just logs)
    * Supports simulation options for testing failure scenarios
    */
   async send(prepared: PreparedMessage): Promise<ProviderResponse> {
-    const { to, from, subject, text } = prepared.data
-    const recipients = Array.isArray(to) ? to : [to]
+    return tracer.startActiveSpan('mock-email.send', async (span) => {
+      const { to, from, subject, text } = prepared.data
+      const recipients = Array.isArray(to) ? to : [to]
 
-    // Simulate network delay if configured
-    if (this.simulation.delayMs && this.simulation.delayMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, this.simulation.delayMs))
-    }
+      span.setAttribute('to_count', recipients.length)
+      span.setAttribute('from', from)
+      span.setAttribute('subject', subject)
+      span.setAttribute('mock', true)
 
-    // Check for forced error
-    if (this.simulation.forceError) {
-      this.logger.warn(
-        {
-          provider: 'mock-email',
-          mock: true,
-          simulation: 'forceError',
-          error: this.simulation.forceError,
-        },
-        '📧 [MOCK EMAIL] Simulating forced error',
-      )
-
-      return {
-        success: false,
-        error: this.simulation.forceError,
-      }
-    }
-
-    // Check for random failure
-    if (this.simulation.failureRate && Math.random() < this.simulation.failureRate) {
-      this.logger.warn(
-        {
-          provider: 'mock-email',
-          mock: true,
-          simulation: 'randomFailure',
-          failureRate: this.simulation.failureRate,
-        },
-        '📧 [MOCK EMAIL] Simulating random failure',
-      )
-
-      return {
-        success: false,
-        error: {
-          code: 'SIMULATED_RANDOM_FAILURE',
-          message: 'Random failure triggered by simulation',
-        },
-      }
-    }
-
-    // Check for recipient-specific errors
-    if (this.simulation.recipientErrors) {
-      const failedRecipients: string[] = []
-      const successfulRecipients: string[] = []
-
-      for (const recipient of recipients) {
-        if (this.simulation.recipientErrors[recipient]) {
-          failedRecipients.push(recipient)
-        } else {
-          successfulRecipients.push(recipient)
-        }
+      // Simulate network delay if configured
+      if (this.simulation.delayMs && this.simulation.delayMs > 0) {
+        span.addEvent('simulating_delay', { delayMs: this.simulation.delayMs })
+        await new Promise((resolve) => setTimeout(resolve, this.simulation.delayMs))
       }
 
-      if (failedRecipients.length > 0) {
+      // Check for forced error
+      if (this.simulation.forceError) {
         this.logger.warn(
           {
             provider: 'mock-email',
             mock: true,
-            simulation: 'recipientErrors',
-            failedRecipients,
-            successfulRecipients,
+            simulation: 'forceError',
+            error: this.simulation.forceError,
           },
-          '📧 [MOCK EMAIL] Simulating recipient-specific failures',
+          '📧 [MOCK EMAIL] Simulating forced error',
         )
 
-        // If all recipients failed, return failure
-        if (successfulRecipients.length === 0) {
-          return {
-            success: false,
-            error: {
-              code: 'RECIPIENT_DELIVERY_FAILED',
-              message: this.simulation.recipientErrors[failedRecipients[0]],
-              details: {
-                failedRecipients,
-                errors: failedRecipients.map((r) => ({
-                  recipient: r,
-                  error: this.simulation.recipientErrors![r],
-                })),
-              },
-            },
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Forced error' })
+        span.end()
+
+        return {
+          success: false,
+          error: this.simulation.forceError,
+        }
+      }
+
+      // Check for random failure
+      if (this.simulation.failureRate && Math.random() < this.simulation.failureRate) {
+        this.logger.warn(
+          {
+            provider: 'mock-email',
+            mock: true,
+            simulation: 'randomFailure',
+            failureRate: this.simulation.failureRate,
+          },
+          '📧 [MOCK EMAIL] Simulating random failure',
+        )
+
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Random failure' })
+        span.end()
+
+        return {
+          success: false,
+          error: {
+            code: 'SIMULATED_RANDOM_FAILURE',
+            message: 'Random failure triggered by simulation',
+          },
+        }
+      }
+
+      // Check for recipient-specific errors
+      if (this.simulation.recipientErrors) {
+        const failedRecipients: string[] = []
+        const successfulRecipients: string[] = []
+
+        for (const recipient of recipients) {
+          if (this.simulation.recipientErrors[recipient]) {
+            failedRecipients.push(recipient)
+          } else {
+            successfulRecipients.push(recipient)
           }
         }
 
-        // Partial success - some recipients failed
-        return {
-          success: true,
-          data: {
-            to: successfulRecipients,
-            from,
-            subject,
-            sentAt: new Date().toISOString(),
-            partialFailure: true,
-            failedRecipients,
-          },
-          externalId: `mock-${Date.now()}`,
+        if (failedRecipients.length > 0) {
+          this.logger.warn(
+            {
+              provider: 'mock-email',
+              mock: true,
+              simulation: 'recipientErrors',
+              failedRecipients,
+              successfulRecipients,
+            },
+            '📧 [MOCK EMAIL] Simulating recipient-specific failures',
+          )
+
+          // If all recipients failed, return failure
+          if (successfulRecipients.length === 0) {
+            span.setStatus({ code: SpanStatusCode.ERROR, message: 'All recipients failed' })
+            span.end()
+
+            return {
+              success: false,
+              error: {
+                code: 'RECIPIENT_DELIVERY_FAILED',
+                message: this.simulation.recipientErrors[failedRecipients[0]],
+                details: {
+                  failedRecipients,
+                  errors: failedRecipients.map((r) => ({
+                    recipient: r,
+                    error: this.simulation.recipientErrors![r],
+                  })),
+                },
+              },
+            }
+          }
+
+          // Partial success - some recipients failed
+          span.setAttribute('partialFailure', true)
+          span.setStatus({ code: SpanStatusCode.OK })
+          span.end()
+
+          return {
+            success: true,
+            data: {
+              to: successfulRecipients,
+              from,
+              subject,
+              sentAt: new Date().toISOString(),
+              partialFailure: true,
+              failedRecipients,
+            },
+            externalId: `mock-${Date.now()}`,
+          }
         }
       }
-    }
 
-    // Mock email sending - log with structured logger
-    this.logger.info(
-      {
-        provider: 'mock-email',
-        mock: true,
-        to,
-        from,
-        subject,
-        bodyLength: text?.length || 0,
-      },
-      '📧 [MOCK EMAIL] Sending email notification',
-    )
+      // Mock email sending - log with structured logger
+      this.logger.info(
+        {
+          provider: 'mock-email',
+          mock: true,
+          to,
+          from,
+          subject,
+          bodyLength: text?.length || 0,
+        },
+        '📧 [MOCK EMAIL] Sending email notification',
+      )
 
-    // Simulate successful send
-    return {
-      success: true,
-      data: {
-        to,
-        from,
-        subject,
-        sentAt: new Date().toISOString(),
-      },
-      externalId: `mock-${Date.now()}`,
-    }
+      span.setStatus({ code: SpanStatusCode.OK })
+      span.end()
+
+      // Simulate successful send
+      return {
+        success: true,
+        data: {
+          to,
+          from,
+          subject,
+          sentAt: new Date().toISOString(),
+        },
+        externalId: `mock-${Date.now()}`,
+      }
+    })
   }
 
   /**

@@ -9,6 +9,7 @@ import type {
 import { createId } from '@paralleldrive/cuid2'
 import { createSyncLogger } from '@maritaca/core'
 import { Resend } from 'resend'
+import { trace, SpanStatusCode } from '@opentelemetry/api'
 
 /**
  * Resend email provider options
@@ -20,14 +21,41 @@ export interface ResendProviderOptions {
 }
 
 /**
+ * Health check result
+ */
+export interface HealthCheckResult {
+  ok: boolean
+  error?: string
+  details?: Record<string, any>
+}
+
+const tracer = trace.getTracer('maritaca-resend-provider')
+
+/**
  * Resend email provider implementation
- * Uses Resend API to send emails
+ * 
+ * Uses Resend API to send emails with full OpenTelemetry tracing.
+ * 
  * @see https://resend.com/docs
+ * 
+ * @example
+ * ```typescript
+ * const provider = new ResendProvider({
+ *   apiKey: 're_xxxxx', // or use RESEND_API_KEY env var
+ * })
+ * 
+ * // Check health before sending
+ * const health = await provider.healthCheck()
+ * if (!health.ok) {
+ *   console.error('Resend provider unhealthy:', health.error)
+ * }
+ * ```
  */
 export class ResendProvider implements Provider {
   channel = 'email' as const
   private logger: Logger
   private client: Resend
+  private apiKey: string
 
   constructor(options?: ResendProviderOptions) {
     this.logger = options?.logger ?? createSyncLogger({ serviceName: 'maritaca-resend-provider' })
@@ -37,11 +65,13 @@ export class ResendProvider implements Provider {
       throw new Error('RESEND_API_KEY is required for ResendProvider')
     }
     
+    this.apiKey = apiKey
     this.client = new Resend(apiKey)
   }
 
   /**
    * Validate that the envelope can be sent via email
+   * @throws {Error} If validation fails
    */
   validate(envelope: Envelope): void {
     const recipients = Array.isArray(envelope.recipient)
@@ -63,8 +93,14 @@ export class ResendProvider implements Provider {
 
   /**
    * Prepare envelope for Resend API
+   * @throws {Error} If no valid recipients or missing sender email
    */
   prepare(envelope: Envelope): PreparedMessage {
+    // Defensive validation - ensure sender email exists
+    if (!envelope.sender.email) {
+      throw new Error('Sender email is required for Resend provider')
+    }
+
     const recipients = Array.isArray(envelope.recipient)
       ? envelope.recipient
       : [envelope.recipient]
@@ -87,7 +123,7 @@ export class ResendProvider implements Provider {
     // Build from address with optional name
     const from = envelope.sender.name
       ? `${envelope.sender.name} <${envelope.sender.email}>`
-      : envelope.sender.email!
+      : envelope.sender.email
 
     return {
       channel: 'email',
@@ -102,84 +138,139 @@ export class ResendProvider implements Provider {
   }
 
   /**
+   * Check if the provider is properly configured and can connect to Resend
+   */
+  async healthCheck(): Promise<HealthCheckResult> {
+    if (!this.apiKey) {
+      return {
+        ok: false,
+        error: 'RESEND_API_KEY is not configured',
+      }
+    }
+
+    try {
+      // Resend doesn't have a dedicated health check endpoint,
+      // so we try to list domains (requires valid API key)
+      const response = await this.client.domains.list()
+      
+      if (response.error) {
+        return {
+          ok: false,
+          error: response.error.message,
+          details: { code: response.error.name },
+        }
+      }
+
+      return {
+        ok: true,
+        details: {
+          domainCount: response.data?.data?.length ?? 0,
+        },
+      }
+    } catch (error: any) {
+      return {
+        ok: false,
+        error: error.message || 'Failed to connect to Resend',
+      }
+    }
+  }
+
+  /**
    * Send email via Resend API
    */
   async send(prepared: PreparedMessage): Promise<ProviderResponse> {
-    const { to, from, subject, text, html } = prepared.data
+    return tracer.startActiveSpan('resend.send', async (span) => {
+      const { to, from, subject, text, html } = prepared.data
 
-    try {
-      this.logger.info(
-        {
-          provider: 'resend',
-          to,
+      span.setAttribute('to_count', Array.isArray(to) ? to.length : 1)
+      span.setAttribute('from', from)
+      span.setAttribute('subject', subject)
+
+      try {
+        this.logger.info(
+          {
+            provider: 'resend',
+            to,
+            from,
+            subject,
+          },
+          '📧 [RESEND] Sending email',
+        )
+
+        const response = await this.client.emails.send({
           from,
+          to: Array.isArray(to) ? to : [to],
           subject,
-        },
-        '📧 [RESEND] Sending email',
-      )
+          text,
+          html,
+        })
 
-      const response = await this.client.emails.send({
-        from,
-        to: Array.isArray(to) ? to : [to],
-        subject,
-        text,
-        html,
-      })
+        if (response.error) {
+          this.logger.error(
+            {
+              provider: 'resend',
+              error: response.error,
+            },
+            '📧 [RESEND] Failed to send email',
+          )
 
-      if (response.error) {
+          span.setStatus({ code: SpanStatusCode.ERROR, message: response.error.message })
+          span.end()
+
+          return {
+            success: false,
+            error: {
+              code: response.error.name || 'RESEND_ERROR',
+              message: response.error.message,
+            },
+          }
+        }
+
+        this.logger.info(
+          {
+            provider: 'resend',
+            messageId: response.data?.id,
+          },
+          '📧 [RESEND] Email sent successfully',
+        )
+
+        span.setAttribute('externalId', response.data?.id || '')
+        span.setStatus({ code: SpanStatusCode.OK })
+        span.end()
+
+        return {
+          success: true,
+          data: {
+            to,
+            from,
+            subject,
+            sentAt: new Date().toISOString(),
+          },
+          externalId: response.data?.id,
+        }
+      } catch (error) {
+        const err = error as Error
         this.logger.error(
           {
             provider: 'resend',
-            error: response.error,
+            error: err.message,
           },
           '📧 [RESEND] Failed to send email',
         )
 
+        span.setStatus({ code: SpanStatusCode.ERROR, message: err.message })
+        span.recordException(err)
+        span.end()
+
         return {
           success: false,
           error: {
-            code: response.error.name || 'RESEND_ERROR',
-            message: response.error.message,
+            code: 'RESEND_EXCEPTION',
+            message: err.message,
           },
         }
       }
-
-      this.logger.info(
-        {
-          provider: 'resend',
-          messageId: response.data?.id,
-        },
-        '📧 [RESEND] Email sent successfully',
-      )
-
-      return {
-        success: true,
-        data: {
-          to,
-          from,
-          subject,
-          sentAt: new Date().toISOString(),
-        },
-        externalId: response.data?.id,
-      }
-    } catch (error) {
-      const err = error as Error
-      this.logger.error(
-        {
-          provider: 'resend',
-          error: err.message,
-        },
-        '📧 [RESEND] Failed to send email',
-      )
-
-      return {
-        success: false,
-        error: {
-          code: 'RESEND_EXCEPTION',
-          message: err.message,
-        },
-      }
-    }
+    })
   }
 
   /**
