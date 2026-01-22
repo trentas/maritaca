@@ -5,6 +5,7 @@ import type {
   ProviderResponse,
   MaritacaEvent,
   Logger,
+  SendOptions,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
 import { createSyncLogger } from '@maritaca/core'
@@ -179,15 +180,17 @@ export class MockEmailProvider implements Provider {
    * Send email (mock - just logs)
    * Supports simulation options for testing failure scenarios
    */
-  async send(prepared: PreparedMessage): Promise<ProviderResponse> {
+  async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
     return tracer.startActiveSpan('mock-email.send', async (span) => {
       const { to, from, subject, text } = prepared.data
       const recipients = Array.isArray(to) ? to : [to]
+      const messageId = options?.messageId
 
       span.setAttribute('to_count', recipients.length)
       span.setAttribute('from', from)
       span.setAttribute('subject', subject)
       span.setAttribute('mock', true)
+      if (messageId) span.setAttribute('message.id', messageId)
 
       // Simulate network delay if configured
       if (this.simulation.delayMs && this.simulation.delayMs > 0) {
@@ -200,6 +203,7 @@ export class MockEmailProvider implements Provider {
         this.logger.warn(
           {
             provider: 'mock-email',
+            messageId,
             mock: true,
             simulation: 'forceError',
             error: this.simulation.forceError,
@@ -221,6 +225,7 @@ export class MockEmailProvider implements Provider {
         this.logger.warn(
           {
             provider: 'mock-email',
+            messageId,
             mock: true,
             simulation: 'randomFailure',
             failureRate: this.simulation.failureRate,
@@ -257,6 +262,7 @@ export class MockEmailProvider implements Provider {
           this.logger.warn(
             {
               provider: 'mock-email',
+              messageId,
               mock: true,
               simulation: 'recipientErrors',
               failedRecipients,
@@ -310,6 +316,7 @@ export class MockEmailProvider implements Provider {
       this.logger.info(
         {
           provider: 'mock-email',
+          messageId,
           mock: true,
           to,
           from,

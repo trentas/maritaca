@@ -12,6 +12,14 @@ export interface PreparedMessage {
 }
 
 /**
+ * Options for sending a message
+ */
+export interface SendOptions {
+  /** Message ID for tracing/logging */
+  messageId?: string
+}
+
+/**
  * Response from a provider after sending
  */
 export interface ProviderResponse {

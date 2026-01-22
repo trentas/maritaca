@@ -5,6 +5,7 @@ import type {
   ProviderResponse,
   MaritacaEvent,
   Logger,
+  SendOptions,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
 import { createSyncLogger } from '@maritaca/core'
@@ -201,20 +202,23 @@ export class SESProvider implements Provider {
   /**
    * Send email via AWS SES
    */
-  async send(prepared: PreparedMessage): Promise<ProviderResponse> {
+  async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
     return tracer.startActiveSpan('ses.send', async (span) => {
       const { to, from, subject, text, html } = prepared.data
       const recipients = Array.isArray(to) ? to : [to]
+      const messageId = options?.messageId
 
       span.setAttribute('to_count', recipients.length)
       span.setAttribute('from', from)
       span.setAttribute('subject', subject)
       span.setAttribute('region', this.region)
+      if (messageId) span.setAttribute('message.id', messageId)
 
       try {
         this.logger.info(
           {
             provider: 'ses',
+            messageId,
             to: recipients,
             from,
             subject,
@@ -254,7 +258,8 @@ export class SESProvider implements Provider {
         this.logger.info(
           {
             provider: 'ses',
-            messageId: response.MessageId,
+            messageId,
+            externalId: response.MessageId,
           },
           '📧 [SES] Email sent successfully',
         )
@@ -278,6 +283,7 @@ export class SESProvider implements Provider {
         this.logger.error(
           {
             provider: 'ses',
+            messageId,
             error: err.message,
             errorName: err.name,
           },

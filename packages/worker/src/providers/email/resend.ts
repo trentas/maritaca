@@ -5,6 +5,7 @@ import type {
   ProviderResponse,
   MaritacaEvent,
   Logger,
+  SendOptions,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
 import { createSyncLogger } from '@maritaca/core'
@@ -178,18 +179,21 @@ export class ResendProvider implements Provider {
   /**
    * Send email via Resend API
    */
-  async send(prepared: PreparedMessage): Promise<ProviderResponse> {
+  async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
     return tracer.startActiveSpan('resend.send', async (span) => {
       const { to, from, subject, text, html } = prepared.data
+      const messageId = options?.messageId
 
       span.setAttribute('to_count', Array.isArray(to) ? to.length : 1)
       span.setAttribute('from', from)
       span.setAttribute('subject', subject)
+      if (messageId) span.setAttribute('message.id', messageId)
 
       try {
         this.logger.info(
           {
             provider: 'resend',
+            messageId,
             to,
             from,
             subject,
@@ -209,6 +213,7 @@ export class ResendProvider implements Provider {
           this.logger.error(
             {
               provider: 'resend',
+              messageId,
               error: response.error,
             },
             '📧 [RESEND] Failed to send email',
@@ -229,7 +234,8 @@ export class ResendProvider implements Provider {
         this.logger.info(
           {
             provider: 'resend',
-            messageId: response.data?.id,
+            messageId,
+            externalId: response.data?.id,
           },
           '📧 [RESEND] Email sent successfully',
         )
@@ -253,6 +259,7 @@ export class ResendProvider implements Provider {
         this.logger.error(
           {
             provider: 'resend',
+            messageId,
             error: err.message,
           },
           '📧 [RESEND] Failed to send email',

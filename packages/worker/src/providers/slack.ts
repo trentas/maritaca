@@ -8,6 +8,7 @@ import type {
   ProviderResponse,
   MaritacaEvent,
   SlackRecipient,
+  SendOptions,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
 import { LRUCache } from 'lru-cache'
@@ -413,9 +414,12 @@ export class SlackProvider implements Provider {
    * Send message via Slack API
    * Includes retry logic for rate limit (429) errors with exponential backoff
    */
-  async send(prepared: PreparedMessage): Promise<ProviderResponse> {
+  async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
     return tracer.startActiveSpan('slack.send', async (span) => {
       const { botToken, recipientInfo, text, blocks } = prepared.data
+      const messageId = options?.messageId
+
+      if (messageId) span.setAttribute('message.id', messageId)
 
       if (!botToken) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: 'Missing token' })
@@ -436,6 +440,7 @@ export class SlackProvider implements Provider {
         const { targets, emailLookupErrors } = await this.resolveTargets(client, recipientInfo)
 
         span.setAttribute('targetCount', targets.length)
+        span.setAttribute('messageId', messageId || '')
 
         if (targets.length === 0) {
           span.setStatus({ code: SpanStatusCode.ERROR, message: 'No valid recipients' })

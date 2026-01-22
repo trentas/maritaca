@@ -1,6 +1,6 @@
 import type { Channel } from '../types/envelope.js'
 import type { Envelope } from '../types/envelope.js'
-import type { PreparedMessage, ProviderResponse } from './types.js'
+import type { PreparedMessage, ProviderResponse, SendOptions } from './types.js'
 import type { MaritacaEvent } from '../types/event.js'
 
 /**
@@ -28,9 +28,10 @@ export interface Provider {
   /**
    * Send the prepared message to the external service
    * @param prepared - The prepared message
+   * @param options - Optional send options (e.g., messageId for tracing)
    * @returns Provider response with success status and details
    */
-  send(prepared: PreparedMessage): Promise<ProviderResponse>
+  send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse>
 
   /**
    * Map provider response to Maritaca events

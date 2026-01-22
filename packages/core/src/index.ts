@@ -19,7 +19,7 @@ export type {
 } from './types/event.js'
 
 // Provider interfaces
-export type { PreparedMessage, ProviderResponse } from './providers/types.js'
+export type { PreparedMessage, ProviderResponse, SendOptions } from './providers/types.js'
 export type { Provider } from './providers/base.js'
 
 // Validation

@@ -93,7 +93,7 @@ export async function processMessageJob(
 
         // Send message (external I/O - most important to trace)
         const response = await traceOperation(span, 'send', async (sendSpan) => {
-          const result = await provider.send(prepared)
+          const result = await provider.send(prepared, { messageId })
           sendSpan.setAttribute('send.success', result.success)
           if (result.externalId) {
             sendSpan.setAttribute('send.externalId', result.externalId)
