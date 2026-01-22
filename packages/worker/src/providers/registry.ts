@@ -1,13 +1,13 @@
-import type { Provider, Channel, Logger } from '@maritaca/core'
+import type { Provider, Channel, Logger, EmailProviderType } from '@maritaca/core'
 import { SlackProvider } from './slack.js'
-import { EmailProvider } from './email.js'
+import { createEmailProvider } from './email/index.js'
 
 /**
  * Provider registry - singleton instances of providers
  * Avoids creating new provider instances for each job
  */
 class ProviderRegistry {
-  private providers: Map<Channel, Provider> = new Map()
+  private providers: Map<string, Provider> = new Map()
   private logger?: Logger
 
   /**
@@ -20,11 +20,19 @@ class ProviderRegistry {
   /**
    * Get provider instance for a channel
    * Creates singleton instance on first access
+   * 
+   * @param channel - The channel to get provider for
+   * @param emailProvider - Optional email provider type (for email channel)
    */
-  getProvider(channel: Channel): Provider | null {
+  getProvider(channel: Channel, emailProvider?: EmailProviderType): Provider | null {
+    // Build cache key - for email, include provider type
+    const cacheKey = channel === 'email' && emailProvider 
+      ? `email:${emailProvider}` 
+      : channel
+
     // Return cached provider if exists
-    if (this.providers.has(channel)) {
-      return this.providers.get(channel)!
+    if (this.providers.has(cacheKey)) {
+      return this.providers.get(cacheKey)!
     }
 
     // Create provider based on channel
@@ -35,7 +43,7 @@ class ProviderRegistry {
         provider = new SlackProvider()
         break
       case 'email':
-        provider = new EmailProvider(this.logger)
+        provider = createEmailProvider(emailProvider, { logger: this.logger })
         break
       case 'push':
       case 'web':
@@ -49,7 +57,7 @@ class ProviderRegistry {
 
     // Cache the provider if created
     if (provider) {
-      this.providers.set(channel, provider)
+      this.providers.set(cacheKey, provider)
     }
 
     return provider

@@ -18,6 +18,21 @@ export interface Sender {
 }
 
 /**
+ * Slack recipient information
+ * At least one identifier must be provided: userId, channelId, channelName, or email
+ */
+export interface SlackRecipient {
+  /** Slack user ID for direct messages (starts with U) */
+  userId?: string
+  /** Slack channel ID for channel messages (starts with C) */
+  channelId?: string
+  /** Channel name (e.g., "general" or "#general") - will be normalized */
+  channelName?: string
+  /** User email - will lookup userId via Slack API */
+  email?: string
+}
+
+/**
  * Recipient information for notifications
  */
 export interface Recipient {
@@ -26,10 +41,7 @@ export interface Recipient {
   /** Email address */
   email?: string
   /** Slack-specific recipient information */
-  slack?: {
-    /** Slack user ID */
-    userId: string
-  }
+  slack?: SlackRecipient
 }
 
 /**
@@ -45,6 +57,11 @@ export interface Payload {
 }
 
 /**
+ * Email provider types
+ */
+export type EmailProviderType = 'resend' | 'ses' | 'mock'
+
+/**
  * Channel-specific overrides for message content
  */
 export interface ChannelOverrides {
@@ -52,6 +69,8 @@ export interface ChannelOverrides {
   email?: {
     /** Email subject line */
     subject?: string
+    /** Email provider to use (overrides default) */
+    provider?: EmailProviderType
   }
   /** Slack-specific overrides */
   slack?: {

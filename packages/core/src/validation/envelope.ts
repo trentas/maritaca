@@ -17,16 +17,28 @@ export const senderSchema = z.object({
 })
 
 /**
+ * Slack recipient schema
+ * At least one identifier must be provided: userId, channelId, channelName, or email
+ */
+export const slackRecipientSchema = z
+  .object({
+    userId: z.string().min(1, 'Slack user ID cannot be empty').optional(),
+    channelId: z.string().min(1, 'Slack channel ID cannot be empty').optional(),
+    channelName: z.string().min(1, 'Slack channel name cannot be empty').optional(),
+    email: z.string().email('Invalid email format').optional(),
+  })
+  .refine(
+    (data) => data.userId || data.channelId || data.channelName || data.email,
+    { message: 'At least one of userId, channelId, channelName, or email must be provided for Slack recipient' }
+  )
+
+/**
  * Recipient schema
  */
 export const recipientSchema = z.object({
   userId: z.string().optional(),
   email: z.string().email().optional(),
-  slack: z
-    .object({
-      userId: z.string().min(1, 'Slack user ID is required'),
-    })
-    .optional(),
+  slack: slackRecipientSchema.optional(),
 })
 
 /**
@@ -39,12 +51,18 @@ export const payloadSchema = z.object({
 })
 
 /**
+ * Email provider schema
+ */
+export const emailProviderSchema = z.enum(['resend', 'ses', 'mock'])
+
+/**
  * Channel overrides schema
  */
 export const channelOverridesSchema = z.object({
   email: z
     .object({
       subject: z.string().optional(),
+      provider: emailProviderSchema.optional(),
     })
     .optional(),
   slack: z

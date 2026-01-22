@@ -5,6 +5,7 @@ import type {
   PreparedMessage,
   ProviderResponse,
   MaritacaEvent,
+  SlackRecipient,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
 
@@ -31,15 +32,47 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Slack recipient info stored in prepared message
+ */
+interface SlackRecipientInfo {
+  /** Direct target (userId or channelId) - can be sent directly */
+  directTargets: string[]
+  /** Channel names to normalize (add # prefix) */
+  channelNames: string[]
+  /** Emails to lookup via Slack API */
+  emails: string[]
+}
+
+/**
  * Slack provider implementation
  * Includes retry logic for rate limit (429) errors
  */
 export class SlackProvider implements Provider {
   channel = 'slack' as const
   private retryConfig: RetryConfig
+  
+  /**
+   * Cache for email -> userId lookups
+   * Avoids repeated API calls for the same email
+   */
+  private emailCache: Map<string, { userId: string; cachedAt: number }> = new Map()
+  
+  /**
+   * Cache TTL in milliseconds (default: 5 minutes)
+   * User IDs rarely change, but we still expire to handle edge cases
+   */
+  private cacheTtlMs: number
 
-  constructor(retryConfig?: Partial<RetryConfig>) {
-    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig }
+  constructor(options?: { retryConfig?: Partial<RetryConfig>; cacheTtlMs?: number }) {
+    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...options?.retryConfig }
+    this.cacheTtlMs = options?.cacheTtlMs ?? 5 * 60 * 1000 // 5 minutes default
+  }
+
+  /**
+   * Check if a SlackRecipient has at least one valid identifier
+   */
+  private hasValidSlackIdentifier(slack: SlackRecipient): boolean {
+    return !!(slack.userId || slack.channelId || slack.channelName || slack.email)
   }
 
   /**
@@ -50,11 +83,13 @@ export class SlackProvider implements Provider {
       ? envelope.recipient
       : [envelope.recipient]
 
-    // Check if at least one recipient has Slack info
-    const hasSlackRecipient = recipients.some((r) => r.slack?.userId)
+    // Check if at least one recipient has valid Slack info
+    const hasSlackRecipient = recipients.some(
+      (r) => r.slack && this.hasValidSlackIdentifier(r.slack)
+    )
 
     if (!hasSlackRecipient) {
-      throw new Error('At least one recipient must have a Slack user ID')
+      throw new Error('At least one recipient must have a Slack identifier (userId, channelId, channelName, or email)')
     }
 
     // Check if Slack bot token is configured via environment variable
@@ -72,12 +107,43 @@ export class SlackProvider implements Provider {
       ? envelope.recipient
       : [envelope.recipient]
 
-    // Get Slack recipients
-    const slackRecipients = recipients
-      .filter((r) => r.slack?.userId)
-      .map((r) => r.slack!.userId)
+    // Collect all Slack recipient info
+    const recipientInfo: SlackRecipientInfo = {
+      directTargets: [],
+      channelNames: [],
+      emails: [],
+    }
 
-    if (slackRecipients.length === 0) {
+    for (const recipient of recipients) {
+      if (!recipient.slack) continue
+
+      const slack = recipient.slack
+
+      // Direct targets (userId or channelId)
+      if (slack.userId) {
+        recipientInfo.directTargets.push(slack.userId)
+      }
+      if (slack.channelId) {
+        recipientInfo.directTargets.push(slack.channelId)
+      }
+
+      // Channel names (need normalization)
+      if (slack.channelName) {
+        recipientInfo.channelNames.push(slack.channelName)
+      }
+
+      // Emails (need API lookup)
+      if (slack.email) {
+        recipientInfo.emails.push(slack.email)
+      }
+    }
+
+    const hasRecipients = 
+      recipientInfo.directTargets.length > 0 ||
+      recipientInfo.channelNames.length > 0 ||
+      recipientInfo.emails.length > 0
+
+    if (!hasRecipients) {
       throw new Error('No Slack recipients found')
     }
 
@@ -105,7 +171,7 @@ export class SlackProvider implements Provider {
       channel: 'slack',
       data: {
         botToken,
-        userIds: slackRecipients,
+        recipientInfo,
         text,
         blocks,
       },
@@ -113,11 +179,106 @@ export class SlackProvider implements Provider {
   }
 
   /**
+   * Normalize channel name by adding # prefix if needed
+   */
+  private normalizeChannelName(channelName: string): string {
+    return channelName.startsWith('#') ? channelName : `#${channelName}`
+  }
+
+  /**
+   * Check if a cached entry is still valid
+   */
+  private isCacheValid(cachedAt: number): boolean {
+    return Date.now() - cachedAt < this.cacheTtlMs
+  }
+
+  /**
+   * Lookup user ID by email via Slack API (with caching)
+   */
+  private async lookupUserByEmail(client: WebClient, email: string): Promise<string> {
+    const normalizedEmail = email.toLowerCase().trim()
+    
+    // Check cache first
+    const cached = this.emailCache.get(normalizedEmail)
+    if (cached && this.isCacheValid(cached.cachedAt)) {
+      return cached.userId
+    }
+    
+    // Cache miss or expired - call Slack API
+    const response = await client.users.lookupByEmail({ email: normalizedEmail })
+    if (!response.ok || !response.user?.id) {
+      throw new Error(`User not found for email: ${email}`)
+    }
+    
+    // Store in cache
+    this.emailCache.set(normalizedEmail, {
+      userId: response.user.id,
+      cachedAt: Date.now(),
+    })
+    
+    return response.user.id
+  }
+
+  /**
+   * Clear the email cache (useful for testing)
+   */
+  clearEmailCache(): void {
+    this.emailCache.clear()
+  }
+
+  /**
+   * Get cache statistics (useful for monitoring)
+   */
+  getEmailCacheStats(): { size: number; emails: string[] } {
+    return {
+      size: this.emailCache.size,
+      emails: Array.from(this.emailCache.keys()),
+    }
+  }
+
+  /**
+   * Resolve all recipients to final targets
+   * - Direct targets (userId, channelId) are used as-is
+   * - Channel names are normalized with # prefix
+   * - Emails are looked up via Slack API
+   */
+  private async resolveTargets(
+    client: WebClient,
+    recipientInfo: SlackRecipientInfo,
+  ): Promise<{ targets: string[]; emailLookupErrors: Array<{ email: string; error: string }> }> {
+    const targets: string[] = []
+    const emailLookupErrors: Array<{ email: string; error: string }> = []
+
+    // Add direct targets
+    targets.push(...recipientInfo.directTargets)
+
+    // Normalize and add channel names
+    for (const channelName of recipientInfo.channelNames) {
+      targets.push(this.normalizeChannelName(channelName))
+    }
+
+    // Lookup emails and add resolved user IDs
+    for (const email of recipientInfo.emails) {
+      try {
+        const userId = await this.lookupUserByEmail(client, email)
+        targets.push(userId)
+      } catch (error: any) {
+        emailLookupErrors.push({
+          email,
+          error: error.message || 'Failed to lookup user',
+        })
+      }
+    }
+
+    return { targets, emailLookupErrors }
+  }
+
+  /**
    * Send message via Slack API
    * Includes retry logic for rate limit (429) errors with exponential backoff
    */
   async send(prepared: PreparedMessage): Promise<ProviderResponse> {
-    const { botToken, userIds, text, blocks } = prepared.data
+    const { botToken, recipientInfo, text, blocks } = prepared.data
 
     if (!botToken) {
       return {
@@ -132,10 +293,24 @@ export class SlackProvider implements Provider {
     const client = new WebClient(botToken)
 
     try {
-      // Send to each user with retry logic
+      // Resolve all recipients to final targets
+      const { targets, emailLookupErrors } = await this.resolveTargets(client, recipientInfo)
+
+      if (targets.length === 0) {
+        return {
+          success: false,
+          error: {
+            code: 'NO_VALID_RECIPIENTS',
+            message: 'No valid Slack recipients could be resolved',
+            details: { emailLookupErrors },
+          },
+        }
+      }
+
+      // Send to each target with retry logic
       const results = await Promise.allSettled(
-        userIds.map((userId: string) =>
-          this.sendWithRetry(client, userId, text, blocks),
+        targets.map((target: string) =>
+          this.sendWithRetry(client, target, text, blocks),
         ),
       )
 
@@ -152,7 +327,7 @@ export class SlackProvider implements Provider {
           error: {
             code: this.getErrorCode(firstError.reason),
             message: firstError.reason?.message || 'Failed to send Slack message',
-            details: firstError.reason,
+            details: { ...firstError.reason, emailLookupErrors },
           },
         }
       }
@@ -166,8 +341,9 @@ export class SlackProvider implements Provider {
         success: true,
         data: {
           sent: successful,
-          failed,
+          failed: failed + emailLookupErrors.length,
           timestamps,
+          emailLookupErrors: emailLookupErrors.length > 0 ? emailLookupErrors : undefined,
         },
         externalId: timestamps[0]?.toString(),
       }
@@ -184,11 +360,11 @@ export class SlackProvider implements Provider {
   }
 
   /**
-   * Send a message to a single user with retry logic for rate limits
+   * Send a message to a single target (user or channel) with retry logic for rate limits
    */
   private async sendWithRetry(
     client: WebClient,
-    userId: string,
+    target: string,
     text: string,
     blocks: any[],
   ): Promise<WebAPICallResult> {
@@ -197,7 +373,7 @@ export class SlackProvider implements Provider {
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
       try {
         return await client.chat.postMessage({
-          channel: userId,
+          channel: target,
           text,
           blocks,
         })

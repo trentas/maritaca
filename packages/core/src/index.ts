@@ -2,11 +2,13 @@
 export type {
   Channel,
   Sender,
+  SlackRecipient,
   Recipient,
   Payload,
   ChannelOverrides,
   MessagePriority,
   Envelope,
+  EmailProviderType,
 } from './types/envelope.js'
 
 export type {
