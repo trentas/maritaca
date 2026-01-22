@@ -1,10 +1,6 @@
-import type { Provider, Logger } from '@maritaca/core'
+import type { Provider, Logger, SmsProviderType } from '@maritaca/core'
 import { SnsSmsProvider } from './sns.js'
-
-/**
- * SMS provider types
- */
-export type SmsProviderType = 'sns'
+import { TwilioProvider } from '../twilio/twilio.js'
 
 /**
  * Options for creating an SMS provider
@@ -16,7 +12,7 @@ export interface CreateSmsProviderOptions {
 /**
  * Factory function to create the appropriate SMS provider
  * 
- * @param providerType - The type of SMS provider to create
+ * @param providerType - The type of SMS provider to create: 'sns' or 'twilio'
  * @param options - Options to pass to the provider
  * @returns The SMS provider instance
  */
@@ -27,6 +23,8 @@ export function createSmsProvider(
   const type = providerType ?? (process.env.SMS_PROVIDER as SmsProviderType) ?? 'sns'
 
   switch (type) {
+    case 'twilio':
+      return new TwilioProvider({ channel: 'sms', logger: options?.logger })
     case 'sns':
     default:
       return new SnsSmsProvider({ logger: options?.logger })
@@ -35,3 +33,4 @@ export function createSmsProvider(
 
 export { SnsSmsProvider } from './sns.js'
 export type { SnsSmsProviderOptions } from './sns.js'
+export type { SmsProviderType } from '@maritaca/core'

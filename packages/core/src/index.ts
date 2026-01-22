@@ -4,6 +4,7 @@ export type {
   Sender,
   SlackRecipient,
   SmsRecipient,
+  WhatsAppRecipient,
   PushRecipient,
   WebPushKeys,
   WebPushRecipient,
@@ -13,6 +14,7 @@ export type {
   MessagePriority,
   Envelope,
   EmailProviderType,
+  SmsProviderType,
   SnsMessageType,
 } from './types/envelope.js'
 

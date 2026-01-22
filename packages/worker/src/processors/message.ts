@@ -43,7 +43,12 @@ export async function processMessageJob(
       providerRegistry.initialize(jobLogger)
 
       // Get provider for channel (singleton instance)
-      const provider = providerRegistry.getProvider(channel)
+      // Pass any channel-specific provider overrides
+      const providerOptions = {
+        emailProvider: envelope.overrides?.email?.provider,
+        smsProvider: envelope.overrides?.sms?.provider,
+      }
+      const provider = providerRegistry.getProvider(channel, providerOptions)
 
       if (!provider) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: 'No provider found' })

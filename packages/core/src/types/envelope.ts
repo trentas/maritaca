@@ -1,7 +1,7 @@
 /**
  * Channel types supported by Maritaca
  */
-export type Channel = 'email' | 'slack' | 'push' | 'web' | 'sms'
+export type Channel = 'email' | 'slack' | 'push' | 'web' | 'sms' | 'whatsapp'
 
 /**
  * Sender information for notifications
@@ -33,9 +33,17 @@ export interface SlackRecipient {
 }
 
 /**
- * SMS recipient information (via AWS SNS)
+ * SMS recipient information (via AWS SNS or Twilio)
  */
 export interface SmsRecipient {
+  /** Phone number in E.164 format (e.g., +5511999999999) */
+  phoneNumber: string
+}
+
+/**
+ * WhatsApp recipient information (via Twilio)
+ */
+export interface WhatsAppRecipient {
   /** Phone number in E.164 format (e.g., +5511999999999) */
   phoneNumber: string
 }
@@ -91,6 +99,8 @@ export interface Recipient {
   push?: PushRecipient
   /** Web Push recipient (browser) */
   web?: WebPushRecipient
+  /** WhatsApp recipient (phone number) */
+  whatsapp?: WhatsAppRecipient
 }
 
 /**
@@ -116,6 +126,11 @@ export type EmailProviderType = 'resend' | 'ses' | 'mock'
 export type SnsMessageType = 'Transactional' | 'Promotional'
 
 /**
+ * SMS provider types
+ */
+export type SmsProviderType = 'sns' | 'twilio'
+
+/**
  * Channel-specific overrides for message content
  */
 export interface ChannelOverrides {
@@ -133,10 +148,21 @@ export interface ChannelOverrides {
   }
   /** SMS-specific overrides */
   sms?: {
-    /** SMS message type: Transactional (higher delivery) or Promotional (default) */
+    /** SMS provider to use: sns or twilio (overrides default) */
+    provider?: SmsProviderType
+    /** SMS message type: Transactional (higher delivery) or Promotional (default) - SNS only */
     messageType?: SnsMessageType
     /** Sender ID (alphanumeric, max 11 chars, not supported in all countries) */
     senderId?: string
+  }
+  /** WhatsApp-specific overrides */
+  whatsapp?: {
+    /** Content SID for approved template (for initiating conversations) */
+    contentSid?: string
+    /** Template variables for content SID */
+    contentVariables?: Record<string, string>
+    /** Media URL to attach (image, document, etc.) */
+    mediaUrl?: string
   }
   /** Push notification overrides (mobile) */
   push?: {

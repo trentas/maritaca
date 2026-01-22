@@ -4,7 +4,7 @@ import type { Channel, Envelope } from '../types/envelope.js'
 /**
  * Channel schema
  */
-export const channelSchema = z.enum(['email', 'slack', 'push', 'web', 'sms'])
+export const channelSchema = z.enum(['email', 'slack', 'push', 'web', 'sms', 'whatsapp'])
 
 /**
  * Sender schema
@@ -36,6 +36,15 @@ export const slackRecipientSchema = z
  * SMS recipient schema (E.164 phone number format)
  */
 export const smsRecipientSchema = z.object({
+  phoneNumber: z
+    .string()
+    .regex(/^\+[1-9]\d{1,14}$/, 'Phone number must be in E.164 format (e.g., +5511999999999)'),
+})
+
+/**
+ * WhatsApp recipient schema (E.164 phone number format)
+ */
+export const whatsappRecipientSchema = z.object({
   phoneNumber: z
     .string()
     .regex(/^\+[1-9]\d{1,14}$/, 'Phone number must be in E.164 format (e.g., +5511999999999)'),
@@ -82,6 +91,7 @@ export const recipientSchema = z.object({
   sms: smsRecipientSchema.optional(),
   push: pushRecipientSchema.optional(),
   web: webPushRecipientSchema.optional(),
+  whatsapp: whatsappRecipientSchema.optional(),
 })
 
 /**
@@ -104,6 +114,11 @@ export const emailProviderSchema = z.enum(['resend', 'ses', 'mock'])
 export const smsMessageTypeSchema = z.enum(['Transactional', 'Promotional'])
 
 /**
+ * SMS provider schema
+ */
+export const smsProviderSchema = z.enum(['sns', 'twilio'])
+
+/**
  * Channel overrides schema
  */
 export const channelOverridesSchema = z.object({
@@ -120,8 +135,16 @@ export const channelOverridesSchema = z.object({
     .optional(),
   sms: z
     .object({
+      provider: smsProviderSchema.optional(),
       messageType: smsMessageTypeSchema.optional(),
       senderId: z.string().max(11, 'Sender ID must be 11 characters or less').optional(),
+    })
+    .optional(),
+  whatsapp: z
+    .object({
+      contentSid: z.string().optional(),
+      contentVariables: z.record(z.string()).optional(),
+      mediaUrl: z.string().url().optional(),
     })
     .optional(),
   push: z

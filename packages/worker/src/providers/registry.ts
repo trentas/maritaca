@@ -1,9 +1,10 @@
-import type { Provider, Channel, Logger, EmailProviderType } from '@maritaca/core'
+import type { Provider, Channel, Logger, EmailProviderType, SmsProviderType } from '@maritaca/core'
 import { SlackProvider } from './slack.js'
 import { createEmailProvider } from './email/index.js'
 import { createSmsProvider } from './sms/index.js'
 import { createPushProvider } from './push/index.js'
 import { createWebProvider } from './web/index.js'
+import { createTwilioWhatsAppProvider } from './twilio/index.js'
 
 /**
  * Provider registry - singleton instances of providers
@@ -25,13 +26,19 @@ class ProviderRegistry {
    * Creates singleton instance on first access
    * 
    * @param channel - The channel to get provider for
-   * @param emailProvider - Optional email provider type (for email channel)
+   * @param options - Optional provider overrides
    */
-  getProvider(channel: Channel, emailProvider?: EmailProviderType): Provider | null {
-    // Build cache key - for email, include provider type
-    const cacheKey = channel === 'email' && emailProvider 
-      ? `email:${emailProvider}` 
-      : channel
+  getProvider(
+    channel: Channel, 
+    options?: { emailProvider?: EmailProviderType; smsProvider?: SmsProviderType }
+  ): Provider | null {
+    // Build cache key - include provider type for channels that support multiple providers
+    let cacheKey = channel
+    if (channel === 'email' && options?.emailProvider) {
+      cacheKey = `email:${options.emailProvider}`
+    } else if (channel === 'sms' && options?.smsProvider) {
+      cacheKey = `sms:${options.smsProvider}`
+    }
 
     // Return cached provider if exists
     if (this.providers.has(cacheKey)) {
@@ -46,16 +53,19 @@ class ProviderRegistry {
         provider = new SlackProvider()
         break
       case 'email':
-        provider = createEmailProvider(emailProvider, { logger: this.logger })
+        provider = createEmailProvider(options?.emailProvider, { logger: this.logger })
         break
       case 'sms':
-        provider = createSmsProvider(null, { logger: this.logger })
+        provider = createSmsProvider(options?.smsProvider, { logger: this.logger })
         break
       case 'push':
         provider = createPushProvider(null, { logger: this.logger })
         break
       case 'web':
         provider = createWebProvider(null, { logger: this.logger })
+        break
+      case 'whatsapp':
+        provider = createTwilioWhatsAppProvider({ logger: this.logger })
         break
       default:
         provider = null
