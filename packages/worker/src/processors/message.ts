@@ -1,6 +1,14 @@
 import { eq } from 'drizzle-orm'
 import { trace, SpanStatusCode, type Span } from '@opentelemetry/api'
-import { messages, attempts, events, type DbClient, type Logger } from '@maritaca/core'
+import { UnrecoverableError } from 'bullmq'
+import {
+  messages,
+  attempts,
+  events,
+  isFatalProviderError,
+  type DbClient,
+  type Logger,
+} from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
 import { providerRegistry } from '../providers/registry.js'
 import type { Envelope, Channel } from '@maritaca/core'
@@ -52,16 +60,22 @@ export async function processMessageJob(
 
       if (!provider) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: 'No provider found' })
-        jobLogger.error({ channel }, 'No provider found for channel')
-        throw new Error(`No provider found for channel: ${channel}`)
+        jobLogger.error({ channel }, 'No provider found for channel - fatal error')
+        // No provider is a configuration error - don't retry
+        throw new UnrecoverableError(`No provider found for channel: ${channel}`)
       }
 
       span.setAttribute('provider.name', provider.channel)
 
-      // Validate envelope
-      await traceOperation(span, 'validate', async () => {
-        provider.validate(envelope)
-      })
+      // Validate envelope - validation errors are fatal (won't be fixed by retry)
+      try {
+        await traceOperation(span, 'validate', async () => {
+          provider.validate(envelope)
+        })
+      } catch (validationError: any) {
+        jobLogger.error({ channel, err: validationError }, 'Envelope validation failed - fatal error')
+        throw new UnrecoverableError(`Validation failed: ${validationError.message}`)
+      }
 
       // Transaction 1: Create attempt and emit started event atomically
       const attemptId = createId()
@@ -146,10 +160,42 @@ export async function processMessageJob(
         })
 
         span.setAttribute('job.success', response.success)
+        
+        // If the send failed, check if it's a fatal error that shouldn't be retried
+        if (!response.success && response.error) {
+          const isFatal = isFatalProviderError(response.error)
+          span.setAttribute('error.fatal', isFatal)
+          
+          if (isFatal) {
+            jobLogger.warn(
+              { attemptId, errorCode: response.error.code, isFatal: true },
+              'Message failed with fatal error - will not retry',
+            )
+            span.setStatus({ code: SpanStatusCode.ERROR, message: 'Fatal error - no retry' })
+            // Throw UnrecoverableError to prevent BullMQ from retrying
+            throw new UnrecoverableError(
+              `Fatal error: ${response.error.message} (code: ${response.error.code})`,
+            )
+          }
+          
+          // Non-fatal error - throw to trigger retry
+          jobLogger.warn(
+            { attemptId, errorCode: response.error.code, isFatal: false },
+            'Message failed with transient error - will retry',
+          )
+          throw new Error(`Provider error: ${response.error.message}`)
+        }
+        
         span.setStatus({ code: SpanStatusCode.OK })
         jobLogger.info({ attemptId, success: response.success }, 'Message processed successfully')
       } catch (error: any) {
-        jobLogger.error({ attemptId, err: error }, 'Failed to process message job')
+        // Check if this is already an UnrecoverableError (fatal error already handled)
+        const isUnrecoverable = error instanceof UnrecoverableError
+        
+        jobLogger.error(
+          { attemptId, err: error, isUnrecoverable },
+          isUnrecoverable ? 'Message failed with fatal error' : 'Failed to process message job',
+        )
         
         // Transaction 3: Persist failure atomically
         await traceOperation(span, 'persistFailure', async () => {
@@ -171,6 +217,7 @@ export async function processMessageJob(
               provider: provider.channel,
               payload: {
                 error: error.message || String(error),
+                fatal: isUnrecoverable,
               },
             })
           })
@@ -181,6 +228,7 @@ export async function processMessageJob(
           await updateMessageStatus(db, messageId, jobLogger)
         })
 
+        // Re-throw the original error to preserve UnrecoverableError behavior
         throw error
       }
     } catch (error: any) {

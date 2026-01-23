@@ -89,6 +89,18 @@ export type {
 // Redis
 export { parseRedisUrl, type RedisConnectionConfig } from './redis/index.js'
 
+// Errors
+export {
+  FATAL_ERROR_CODES,
+  FATAL_HTTP_STATUS_CODES,
+  FatalError,
+  isFatalError,
+  isFatalErrorCode,
+  isFatalHttpStatus,
+  isFatalProviderError,
+  type ProviderError,
+} from './errors/index.js'
+
 // Metrics
 export {
   meter,
