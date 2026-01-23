@@ -32,6 +32,7 @@
     "@slack/web-api": "^7.0.0",
     "bullmq": "^5.0.0",
     "drizzle-orm": "^0.31.0",
+    "grammy": "^1.39.3",
     "ioredis": "^5.3.0",
     "lru-cache": "^11.2.4",
     "resend": "^4.0.0",

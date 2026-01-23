@@ -16,6 +16,7 @@ Maritaca is to notifications what Resend is to email: simple, predictable, well-
 | **slack** | Slack API | Team notifications, alerts |
 | **sms** | AWS SNS, Twilio | OTP codes, urgent alerts |
 | **whatsapp** | Twilio | Customer messaging, support |
+| **telegram** | Telegram Bot API | Bots, groups, channels |
 | **push** | AWS SNS | Mobile apps (iOS/Android) |
 | **web** | Web Push | Browser notifications |
 
@@ -166,6 +167,16 @@ await maritaca.messages.send({
   overrides: { push: { badge: 1, sound: 'default' } }
 })
 
+// Telegram
+await maritaca.messages.send({
+  idempotencyKey: 'telegram-alert',
+  channels: ['telegram'],
+  sender: { name: 'Alert Bot' },
+  recipient: { telegram: { chatId: 123456789 } },
+  payload: { title: 'Server Alert', text: 'CPU usage above 90%' },
+  overrides: { telegram: { parseMode: 'HTML', disableNotification: false } }
+})
+
 // Multi-channel (same message, multiple channels)
 await maritaca.messages.send({
   idempotencyKey: 'urgent-alert',
@@ -269,6 +280,27 @@ Uses Twilio WhatsApp Business API.
 
 Required: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`
 
+### Telegram
+
+Send messages via Telegram Bot API using [grammy](https://grammy.dev/):
+
+| Recipient Type | Example | Description |
+|----------------|---------|-------------|
+| `chatId` (numeric) | `123456789` | User or group chat ID |
+| `chatId` (string) | `@channelname` | Public channel username |
+
+Features:
+- HTML and MarkdownV2 formatting
+- Silent notifications (`disableNotification`)
+- Reply to specific messages (`replyToMessageId`)
+- Automatic retry with exponential backoff for rate limits
+
+Rate Limits (Telegram):
+- 30 messages/second for private chats
+- 1 message/second for groups (20 messages/minute)
+
+Required: `TELEGRAM_BOT_TOKEN`
+
 ### Push (Mobile)
 
 AWS SNS for iOS (APNs) and Android (FCM/GCM):
@@ -303,7 +335,7 @@ Create and send a notification.
 ```json
 {
   "idempotencyKey": "unique-key",
-  "channels": ["email", "slack", "sms", "whatsapp", "push", "web"],
+  "channels": ["email", "slack", "sms", "whatsapp", "telegram", "push", "web"],
   "sender": { 
     "name": "Acme",
     "email": "noreply@acme.com"
@@ -313,6 +345,7 @@ Create and send a notification.
     "slack": { "userId": "U01ABC" },
     "sms": { "phoneNumber": "+5511999999999" },
     "whatsapp": { "phoneNumber": "+5511999999999" },
+    "telegram": { "chatId": 123456789 },
     "push": { "deviceToken": "...", "platform": "APNS" },
     "web": { "endpoint": "...", "keys": { "p256dh": "...", "auth": "..." } }
   },
@@ -326,6 +359,7 @@ Create and send a notification.
     "slack": { "blocks": [] },
     "sms": { "provider": "twilio", "messageType": "Transactional" },
     "whatsapp": { "contentSid": "HX...", "mediaUrl": "https://..." },
+    "telegram": { "parseMode": "HTML", "disableNotification": false },
     "push": { "badge": 1, "sound": "default", "ttl": 3600 },
     "web": { "icon": "/icon.png", "urgency": "high", "actions": [] }
   },
@@ -436,6 +470,12 @@ All configuration is done via environment variables. See [.env.example](./.env.e
 |----------|----------|-------------|
 | `TWILIO_WHATSAPP_FROM` | For WhatsApp | WhatsApp-enabled number (E.164) |
 
+### Telegram
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TELEGRAM_BOT_TOKEN` | For Telegram | Bot token from [@BotFather](https://t.me/botfather) |
+
 ### Push (Mobile)
 
 | Variable | Required | Description |
@@ -488,12 +528,13 @@ maritaca/
 │   │   ├── src/
 │   │   │   ├── processors/ # Message, maintenance processors
 │   │   │   ├── providers/
-│   │   │   │   ├── email/  # Resend, SES, Mock
-│   │   │   │   ├── slack/  # Slack API
-│   │   │   │   ├── sms/    # AWS SNS
-│   │   │   │   ├── push/   # AWS SNS (mobile)
-│   │   │   │   ├── web/    # Web Push
-│   │   │   │   └── twilio/ # SMS, WhatsApp
+│   │   │   │   ├── email/    # Resend, SES, Mock
+│   │   │   │   ├── slack/    # Slack API
+│   │   │   │   ├── sms/      # AWS SNS
+│   │   │   │   ├── push/     # AWS SNS (mobile)
+│   │   │   │   ├── web/      # Web Push
+│   │   │   │   ├── telegram/ # Telegram Bot API
+│   │   │   │   └── twilio/   # SMS, WhatsApp
 │   │   │   └── queues/     # Queue definitions
 │   │   └── ...
 │   └── sdk/            # TypeScript client

@@ -5,6 +5,7 @@ export type {
   SlackRecipient,
   SmsRecipient,
   WhatsAppRecipient,
+  TelegramRecipient,
   PushRecipient,
   WebPushKeys,
   WebPushRecipient,

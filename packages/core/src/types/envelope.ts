@@ -1,7 +1,7 @@
 /**
  * Channel types supported by Maritaca
  */
-export type Channel = 'email' | 'slack' | 'push' | 'web' | 'sms' | 'whatsapp'
+export type Channel = 'email' | 'slack' | 'push' | 'web' | 'sms' | 'whatsapp' | 'telegram'
 
 /**
  * Sender information for notifications
@@ -46,6 +46,16 @@ export interface SmsRecipient {
 export interface WhatsAppRecipient {
   /** Phone number in E.164 format (e.g., +5511999999999) */
   phoneNumber: string
+}
+
+/**
+ * Telegram recipient information (via Telegram Bot API)
+ */
+export interface TelegramRecipient {
+  /** Chat ID (user, group, or channel) - required */
+  chatId: string | number
+  /** Username (optional, for reference) */
+  username?: string
 }
 
 /**
@@ -101,6 +111,8 @@ export interface Recipient {
   web?: WebPushRecipient
   /** WhatsApp recipient (phone number) */
   whatsapp?: WhatsAppRecipient
+  /** Telegram recipient (chat ID) */
+  telegram?: TelegramRecipient
 }
 
 /**
@@ -203,6 +215,15 @@ export interface ChannelOverrides {
     ttl?: number
     /** Urgency: very-low, low, normal, high */
     urgency?: 'very-low' | 'low' | 'normal' | 'high'
+  }
+  /** Telegram-specific overrides */
+  telegram?: {
+    /** Parse mode for message formatting */
+    parseMode?: 'HTML' | 'MarkdownV2'
+    /** Disable notification sound */
+    disableNotification?: boolean
+    /** Reply to a specific message */
+    replyToMessageId?: number
   }
 }
 

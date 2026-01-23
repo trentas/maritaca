@@ -5,6 +5,7 @@ import { createSmsProvider } from './sms/index.js'
 import { createPushProvider } from './push/index.js'
 import { createWebProvider } from './web/index.js'
 import { createTwilioWhatsAppProvider } from './twilio/index.js'
+import { createTelegramProvider } from './telegram/index.js'
 
 /**
  * Provider registry - singleton instances of providers
@@ -66,6 +67,9 @@ class ProviderRegistry {
         break
       case 'whatsapp':
         provider = createTwilioWhatsAppProvider({ logger: this.logger })
+        break
+      case 'telegram':
+        provider = createTelegramProvider({ logger: this.logger })
         break
       default:
         provider = null

@@ -4,7 +4,7 @@ import type { Channel, Envelope } from '../types/envelope.js'
 /**
  * Channel schema
  */
-export const channelSchema = z.enum(['email', 'slack', 'push', 'web', 'sms', 'whatsapp'])
+export const channelSchema = z.enum(['email', 'slack', 'push', 'web', 'sms', 'whatsapp', 'telegram'])
 
 /**
  * Sender schema
@@ -51,6 +51,18 @@ export const whatsappRecipientSchema = z.object({
 })
 
 /**
+ * Telegram recipient schema
+ * chatId is required (can be string or number)
+ */
+export const telegramRecipientSchema = z.object({
+  chatId: z.union([
+    z.string().min(1, 'Telegram chat ID cannot be empty'),
+    z.number().int('Telegram chat ID must be an integer'),
+  ]),
+  username: z.string().optional(),
+})
+
+/**
  * Push notification recipient schema (mobile)
  */
 export const pushRecipientSchema = z
@@ -92,6 +104,7 @@ export const recipientSchema = z.object({
   push: pushRecipientSchema.optional(),
   web: webPushRecipientSchema.optional(),
   whatsapp: whatsappRecipientSchema.optional(),
+  telegram: telegramRecipientSchema.optional(),
 })
 
 /**
@@ -176,6 +189,13 @@ export const channelOverridesSchema = z.object({
       data: z.record(z.any()).optional(),
       ttl: z.number().int().min(0).optional(),
       urgency: z.enum(['very-low', 'low', 'normal', 'high']).optional(),
+    })
+    .optional(),
+  telegram: z
+    .object({
+      parseMode: z.enum(['HTML', 'MarkdownV2']).optional(),
+      disableNotification: z.boolean().optional(),
+      replyToMessageId: z.number().int().optional(),
     })
     .optional(),
 })
