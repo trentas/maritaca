@@ -1,5 +1,6 @@
 import Fastify, { FastifyInstance } from 'fastify'
 import fastifyRateLimit from '@fastify/rate-limit'
+import { sql } from 'drizzle-orm'
 import { createDbClient, createLogger, parseRedisUrl, type DbClient } from '@maritaca/core'
 import { messageRoutes } from './routes/messages.js'
 import { authMiddleware } from './middleware/auth.js'
@@ -111,8 +112,39 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   await server.register(messageRoutes, { prefix: '/v1' })
 
   // Health check endpoint
-  server.get('/health', async () => {
-    return { status: 'ok', timestamp: new Date().toISOString() }
+  // Tests database and Redis connectivity for readiness
+  server.get('/health', async (request, reply) => {
+    const checks: Record<string, { status: 'ok' | 'error'; latencyMs?: number; error?: string }> = {}
+    let healthy = true
+
+    // Check PostgreSQL
+    const dbStart = Date.now()
+    try {
+      await db.execute(sql`SELECT 1`)
+      checks.database = { status: 'ok', latencyMs: Date.now() - dbStart }
+    } catch (err: any) {
+      healthy = false
+      checks.database = { status: 'error', latencyMs: Date.now() - dbStart, error: err.message }
+    }
+
+    // Check Redis via BullMQ queue client
+    const redisStart = Date.now()
+    try {
+      const client = await queue.client
+      await client.ping()
+      checks.redis = { status: 'ok', latencyMs: Date.now() - redisStart }
+    } catch (err: any) {
+      healthy = false
+      checks.redis = { status: 'error', latencyMs: Date.now() - redisStart, error: err.message }
+    }
+
+    const response = {
+      status: healthy ? 'ok' : 'degraded',
+      timestamp: new Date().toISOString(),
+      checks,
+    }
+
+    return reply.code(healthy ? 200 : 503).send(response)
   })
 
   return server
@@ -130,6 +162,31 @@ declare module 'fastify' {
  */
 export async function startServer(options: ServerOptions): Promise<void> {
   const server = await createServer(options)
+
+  // Graceful shutdown handler
+  const shutdown = async (signal: string) => {
+    server.log.info({ signal }, 'Graceful shutdown initiated...')
+    
+    try {
+      // Close Fastify server (stops accepting new connections)
+      await server.close()
+      
+      // Close queue client (Redis connection)
+      await server.queue.close()
+      
+      // Close database connection pool
+      await server.db.close()
+      
+      server.log.info('Shutdown complete')
+      process.exit(0)
+    } catch (err) {
+      server.log.error(err, 'Error during shutdown')
+      process.exit(1)
+    }
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'))
+  process.on('SIGINT', () => shutdown('SIGINT'))
 
   try {
     const address = await server.listen({

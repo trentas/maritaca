@@ -21,6 +21,8 @@ export interface WorkerOptions {
 export interface Workers {
   notificationWorker: Worker
   maintenanceWorker?: Worker
+  /** Close all workers and database connections */
+  close: () => Promise<void>
 }
 
 /**
@@ -98,7 +100,23 @@ export async function createWorker(options: WorkerOptions): Promise<Workers> {
     }
   }
 
-  return { notificationWorker, maintenanceWorker }
+  // Create close function for graceful shutdown
+  const close = async () => {
+    logger.info('Closing workers and connections...')
+    
+    // Close workers first (stops processing new jobs)
+    await notificationWorker.close()
+    if (maintenanceWorker) {
+      await maintenanceWorker.close()
+    }
+    
+    // Close database connection pool
+    await db.close()
+    
+    logger.info('All workers and connections closed')
+  }
+
+  return { notificationWorker, maintenanceWorker, close }
 }
 
 /**
@@ -106,22 +124,20 @@ export async function createWorker(options: WorkerOptions): Promise<Workers> {
  */
 export async function startWorker(options: WorkerOptions): Promise<void> {
   const logger = options.logger ?? await createLogger({ serviceName: 'maritaca-worker' })
-  const { notificationWorker, maintenanceWorker } = await createWorker({ ...options, logger })
+  const workers = await createWorker({ ...options, logger })
 
   logger.info({
-    maintenance: !!maintenanceWorker,
+    maintenance: !!workers.maintenanceWorker,
   }, 'Worker started and listening for jobs')
 
   // Ensures at least one span so the worker service appears in observability platforms (e.g. when no jobs processed yet)
   trace.getTracer('maritaca-worker', '1.0').startSpan('worker.ready').end()
 
-  // Graceful shutdown
+  // Graceful shutdown - closes workers and database connections
   const shutdown = async () => {
-    logger.info('Shutting down workers...')
-    await notificationWorker.close()
-    if (maintenanceWorker) {
-      await maintenanceWorker.close()
-    }
+    logger.info('Graceful shutdown initiated...')
+    await workers.close()
+    logger.info('Shutdown complete')
     process.exit(0)
   }
 

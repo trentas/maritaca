@@ -67,6 +67,7 @@ services:
       DATABASE_URL: postgresql://maritaca:maritaca@postgres:5432/maritaca
       REDIS_URL: redis://redis:6379
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       OTEL_SERVICE_NAME: maritaca-worker
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: ${OTEL_EXPORTER_OTLP_LOGS_ENDPOINT:-}
