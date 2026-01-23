@@ -137,9 +137,244 @@ Replace `<otlp-collector-service-name>` with the OTEL Collector service name fro
 
 ## 3. What gets exported
 
-- **Traces:** API HTTP requests, BullMQ jobs (enqueue and process), Redis operations, and outbound HTTP (e.g. Slack). Services: `maritaca-api`, `maritaca-worker`.
-- **Metrics:** HTTP, Redis, and Node/OTel metrics (from the instrumentations).
+- **Traces:** API HTTP requests, BullMQ jobs (enqueue and process), Redis operations, PostgreSQL queries, and outbound HTTP (e.g. Slack). Services: `maritaca-api`, `maritaca-worker`.
+- **Metrics:** HTTP, Redis, PostgreSQL, Node/OTel metrics (from the instrumentations), plus custom business metrics (see below).
 - **Logs:** Pino logs (API and worker) with `traceId`/`spanId` when a span is active, so you can link logs to traces in your observability platform.
+
+---
+
+## 3.1. Custom Business Metrics
+
+Maritaca exports custom metrics for monitoring notification delivery performance and health:
+
+| Metric Name | Type | Labels | Description |
+|-------------|------|--------|-------------|
+| `maritaca.messages.sent` | Counter | `channel`, `status` | Total messages sent (status: success/error) |
+| `maritaca.messages.processing.duration` | Histogram | `channel`, `provider` | Message processing duration in ms |
+| `maritaca.provider.errors` | Counter | `provider`, `error_code` | Provider errors by type |
+| `maritaca.provider.rate_limits` | Counter | `provider` | Rate limit events from providers |
+| `maritaca.queue.jobs` | UpDownCounter | `queue`, `status` | Jobs by queue and status |
+| `maritaca.health.latency` | Histogram | `component` | Health check latency (database, redis) |
+| `maritaca.health.status` | Gauge | - | Overall health (1=healthy, 0=degraded) |
+
+### Label Values
+
+**Channels:** `email`, `sms`, `slack`, `telegram`, `push`, `web`, `whatsapp`
+
+**Providers:** `resend`, `ses`, `mock-email`, `sns-sms`, `sns-push`, `twilio-sms`, `twilio-whatsapp`, `slack`, `telegram`, `web-push`
+
+**Status:** `success`, `error`
+
+---
+
+## 3.2. Trace Sampling
+
+For high-volume production environments, you can configure trace sampling to reduce telemetry costs while maintaining visibility.
+
+### Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `OTEL_TRACES_SAMPLER` | Sampler type | `parentbased_traceidratio` |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampler argument | `0.1` (10% sampling) |
+
+### Sampler Types
+
+- `always_on` - Sample all traces (default)
+- `always_off` - Sample no traces
+- `traceidratio` - Sample based on trace ID ratio
+- `parentbased_always_on` - Follow parent, default to always on
+- `parentbased_always_off` - Follow parent, default to always off
+- `parentbased_traceidratio` - Follow parent, default to ratio (recommended)
+
+### Example Configuration
+
+```bash
+# Sample 10% of traces in production
+OTEL_TRACES_SAMPLER=parentbased_traceidratio
+OTEL_TRACES_SAMPLER_ARG=0.1
+```
+
+---
+
+## 3.3. Example Prometheus Alerts
+
+```yaml
+groups:
+  - name: maritaca
+    rules:
+      # High error rate alert
+      - alert: MaritacaHighErrorRate
+        expr: |
+          sum(rate(maritaca_messages_sent_total{status="error"}[5m])) 
+          / sum(rate(maritaca_messages_sent_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High message error rate (> 10%)"
+          description: "Error rate is {{ $value | humanizePercentage }}"
+
+      # Provider rate limiting alert
+      - alert: MaritacaProviderRateLimited
+        expr: sum(rate(maritaca_provider_rate_limits_total[5m])) by (provider) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Provider {{ $labels.provider }} is being rate limited"
+
+      # High processing latency alert
+      - alert: MaritacaHighLatency
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(maritaca_messages_processing_duration_bucket[5m])) by (le, channel)
+          ) > 5000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High processing latency for {{ $labels.channel }}"
+          description: "P95 latency is {{ $value }}ms"
+
+      # Health check failures
+      - alert: MaritacaUnhealthy
+        expr: maritaca_health_status == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Maritaca service is unhealthy"
+          description: "Health check is failing"
+
+      # Database latency alert
+      - alert: MaritacaDatabaseSlow
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(maritaca_health_latency_bucket{component="database"}[5m])) by (le)
+          ) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database health check latency is high"
+          description: "P95 latency is {{ $value }}ms"
+```
+
+---
+
+## 3.4. Example Grafana Dashboard
+
+Import this JSON into Grafana to create a Maritaca monitoring dashboard:
+
+```json
+{
+  "title": "Maritaca Notifications",
+  "uid": "maritaca-main",
+  "panels": [
+    {
+      "title": "Messages Sent (per second)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(maritaca_messages_sent_total[5m])) by (channel, status)",
+          "legendFormat": "{{ channel }} - {{ status }}"
+        }
+      ]
+    },
+    {
+      "title": "Error Rate by Channel",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(maritaca_messages_sent_total{status=\"error\"}[5m])) by (channel) / sum(rate(maritaca_messages_sent_total[5m])) by (channel) * 100",
+          "legendFormat": "{{ channel }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "title": "Processing Latency (P95)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(maritaca_messages_processing_duration_bucket[5m])) by (le, channel))",
+          "legendFormat": "{{ channel }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "title": "Provider Errors",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(maritaca_provider_errors_total[5m])) by (provider, error_code)",
+          "legendFormat": "{{ provider }} - {{ error_code }}"
+        }
+      ]
+    },
+    {
+      "title": "Rate Limits",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 16, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(maritaca_provider_rate_limits_total[1h])) by (provider)",
+          "legendFormat": "{{ provider }}"
+        }
+      ]
+    },
+    {
+      "title": "Health Status",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 16, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "maritaca_health_status",
+          "legendFormat": "Health"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "Degraded", "color": "red" } } },
+            { "type": "value", "options": { "1": { "text": "Healthy", "color": "green" } } }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Health Check Latency",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 4 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(maritaca_health_latency_bucket[5m])) by (le, component))",
+          "legendFormat": "{{ component }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      }
+    }
+  ]
+}
+```
 
 ---
 

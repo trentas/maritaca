@@ -9,7 +9,14 @@ import type {
   Channel,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
-import { createSyncLogger, maskPhone } from '@maritaca/core'
+import {
+  createSyncLogger,
+  maskPhone,
+  recordMessageSent,
+  recordProcessingDuration,
+  recordProviderError,
+  recordRateLimit,
+} from '@maritaca/core'
 import { Twilio } from 'twilio'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
@@ -226,11 +233,17 @@ export class TwilioProvider implements Provider {
    */
   async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
     const spanName = this.channel === 'whatsapp' ? 'twilio-whatsapp.send' : 'twilio-sms.send'
+    const providerName = `twilio-${this.channel}`
+    const startTime = Date.now()
     
     return tracer.startActiveSpan(spanName, async (span) => {
       const { phoneNumbers, from, body, contentSid, contentVariables, mediaUrl } = prepared.data
       const messageId = options?.messageId
 
+      // Add semantic span attributes for messaging operations
+      span.setAttribute('messaging.system', 'twilio')
+      span.setAttribute('messaging.operation', 'send')
+      span.setAttribute('messaging.destination.kind', this.channel === 'whatsapp' ? 'whatsapp' : 'sms')
       span.setAttribute('recipient_count', phoneNumbers.length)
       span.setAttribute('channel', this.channel)
       if (messageId) span.setAttribute('message.id', messageId)
@@ -253,6 +266,16 @@ export class TwilioProvider implements Provider {
           span.setStatus({ code: SpanStatusCode.ERROR, message: 'All sends failed' })
           span.end()
 
+          const errorCode = firstError.reason?.code || 'TWILIO_ERROR'
+          // Record metrics for the failed send
+          recordMessageSent(this.channel, 'error')
+          recordProviderError(providerName, errorCode)
+          recordProcessingDuration(this.channel, providerName, Date.now() - startTime)
+          // Track rate limits (Twilio uses code 429 or error code 20429)
+          if (firstError.reason?.status === 429 || errorCode === 20429) {
+            recordRateLimit(providerName)
+          }
+
           return {
             success: false,
             error: {
@@ -273,6 +296,10 @@ export class TwilioProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.OK })
         span.end()
 
+        // Record metrics for successful send
+        recordMessageSent(this.channel, 'success')
+        recordProcessingDuration(this.channel, providerName, Date.now() - startTime)
+
         return {
           success: true,
           data: {
@@ -286,6 +313,11 @@ export class TwilioProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.ERROR, message: error.message })
         span.recordException(error)
         span.end()
+
+        // Record metrics for the failed send
+        recordMessageSent(this.channel, 'error')
+        recordProviderError(providerName, 'TWILIO_EXCEPTION')
+        recordProcessingDuration(this.channel, providerName, Date.now() - startTime)
 
         return {
           success: false,

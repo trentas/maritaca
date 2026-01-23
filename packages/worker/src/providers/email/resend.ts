@@ -8,7 +8,14 @@ import type {
   SendOptions,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
-import { createSyncLogger, maskLogData } from '@maritaca/core'
+import {
+  createSyncLogger,
+  maskLogData,
+  recordMessageSent,
+  recordProcessingDuration,
+  recordProviderError,
+  recordRateLimit,
+} from '@maritaca/core'
 import { Resend } from 'resend'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
@@ -180,10 +187,16 @@ export class ResendProvider implements Provider {
    * Send email via Resend API
    */
   async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
+    const startTime = Date.now()
+
     return tracer.startActiveSpan('resend.send', async (span) => {
       const { to, from, subject, text, html } = prepared.data
       const messageId = options?.messageId
 
+      // Add semantic span attributes for messaging operations
+      span.setAttribute('messaging.system', 'resend')
+      span.setAttribute('messaging.operation', 'send')
+      span.setAttribute('messaging.destination.kind', 'email')
       span.setAttribute('to_count', Array.isArray(to) ? to.length : 1)
       span.setAttribute('from', from)
       span.setAttribute('subject', subject)
@@ -222,10 +235,20 @@ export class ResendProvider implements Provider {
           span.setStatus({ code: SpanStatusCode.ERROR, message: response.error.message })
           span.end()
 
+          const errorCode = response.error.name || 'RESEND_ERROR'
+          // Record metrics for the failed send
+          recordMessageSent('email', 'error')
+          recordProviderError('resend', errorCode)
+          recordProcessingDuration('email', 'resend', Date.now() - startTime)
+          // Track rate limits
+          if (errorCode === 'rate_limit_exceeded' || response.error.name === 'rate_limit_exceeded') {
+            recordRateLimit('resend')
+          }
+
           return {
             success: false,
             error: {
-              code: response.error.name || 'RESEND_ERROR',
+              code: errorCode,
               message: response.error.message,
             },
           }
@@ -243,6 +266,10 @@ export class ResendProvider implements Provider {
         span.setAttribute('externalId', response.data?.id || '')
         span.setStatus({ code: SpanStatusCode.OK })
         span.end()
+
+        // Record metrics for successful send
+        recordMessageSent('email', 'success')
+        recordProcessingDuration('email', 'resend', Date.now() - startTime)
 
         return {
           success: true,
@@ -268,6 +295,11 @@ export class ResendProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.ERROR, message: err.message })
         span.recordException(err)
         span.end()
+
+        // Record metrics for the failed send
+        recordMessageSent('email', 'error')
+        recordProviderError('resend', 'RESEND_EXCEPTION')
+        recordProcessingDuration('email', 'resend', Date.now() - startTime)
 
         return {
           success: false,

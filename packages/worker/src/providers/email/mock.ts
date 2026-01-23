@@ -8,7 +8,13 @@ import type {
   SendOptions,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
-import { createSyncLogger, maskLogData } from '@maritaca/core'
+import {
+  createSyncLogger,
+  maskLogData,
+  recordMessageSent,
+  recordProcessingDuration,
+  recordProviderError,
+} from '@maritaca/core'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
 /**
@@ -181,11 +187,17 @@ export class MockEmailProvider implements Provider {
    * Supports simulation options for testing failure scenarios
    */
   async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
+    const startTime = Date.now()
+
     return tracer.startActiveSpan('mock-email.send', async (span) => {
       const { to, from, subject, text } = prepared.data
       const recipients = Array.isArray(to) ? to : [to]
       const messageId = options?.messageId
 
+      // Add semantic span attributes for messaging operations
+      span.setAttribute('messaging.system', 'mock-email')
+      span.setAttribute('messaging.operation', 'send')
+      span.setAttribute('messaging.destination.kind', 'email')
       span.setAttribute('to_count', recipients.length)
       span.setAttribute('from', from)
       span.setAttribute('subject', subject)
@@ -214,6 +226,11 @@ export class MockEmailProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.ERROR, message: 'Forced error' })
         span.end()
 
+        // Record metrics for the simulated failure
+        recordMessageSent('email', 'error')
+        recordProviderError('mock-email', this.simulation.forceError.code)
+        recordProcessingDuration('email', 'mock-email', Date.now() - startTime)
+
         return {
           success: false,
           error: this.simulation.forceError,
@@ -235,6 +252,11 @@ export class MockEmailProvider implements Provider {
 
         span.setStatus({ code: SpanStatusCode.ERROR, message: 'Random failure' })
         span.end()
+
+        // Record metrics for the simulated failure
+        recordMessageSent('email', 'error')
+        recordProviderError('mock-email', 'SIMULATED_RANDOM_FAILURE')
+        recordProcessingDuration('email', 'mock-email', Date.now() - startTime)
 
         return {
           success: false,
@@ -276,6 +298,11 @@ export class MockEmailProvider implements Provider {
             span.setStatus({ code: SpanStatusCode.ERROR, message: 'All recipients failed' })
             span.end()
 
+            // Record metrics for the simulated failure
+            recordMessageSent('email', 'error')
+            recordProviderError('mock-email', 'RECIPIENT_DELIVERY_FAILED')
+            recordProcessingDuration('email', 'mock-email', Date.now() - startTime)
+
             return {
               success: false,
               error: {
@@ -296,6 +323,10 @@ export class MockEmailProvider implements Provider {
           span.setAttribute('partialFailure', true)
           span.setStatus({ code: SpanStatusCode.OK })
           span.end()
+
+          // Record metrics for successful send (partial success is still success)
+          recordMessageSent('email', 'success')
+          recordProcessingDuration('email', 'mock-email', Date.now() - startTime)
 
           return {
             success: true,
@@ -328,6 +359,10 @@ export class MockEmailProvider implements Provider {
 
       span.setStatus({ code: SpanStatusCode.OK })
       span.end()
+
+      // Record metrics for successful send
+      recordMessageSent('email', 'success')
+      recordProcessingDuration('email', 'mock-email', Date.now() - startTime)
 
       // Simulate successful send
       return {

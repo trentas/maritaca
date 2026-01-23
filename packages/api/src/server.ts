@@ -1,7 +1,14 @@
 import Fastify, { FastifyInstance } from 'fastify'
 import fastifyRateLimit from '@fastify/rate-limit'
 import { sql } from 'drizzle-orm'
-import { createDbClient, createLogger, parseRedisUrl, type DbClient } from '@maritaca/core'
+import {
+  createDbClient,
+  createLogger,
+  parseRedisUrl,
+  recordHealthLatency,
+  healthStatusGauge,
+  type DbClient,
+} from '@maritaca/core'
 import { messageRoutes } from './routes/messages.js'
 import { authMiddleware } from './middleware/auth.js'
 import { createQueue } from './services/queue.js'
@@ -111,8 +118,17 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // Register routes
   await server.register(messageRoutes, { prefix: '/v1' })
 
+  // Track health status for metrics
+  let currentHealthStatus = 1 // 1 = healthy, 0 = degraded
+
+  // Register observable gauge callback for health status
+  healthStatusGauge.addCallback((observableResult) => {
+    observableResult.observe(currentHealthStatus, {})
+  })
+
   // Health check endpoint
   // Tests database and Redis connectivity for readiness
+  // Records latency metrics for monitoring
   server.get('/health', async (request, reply) => {
     const checks: Record<string, { status: 'ok' | 'error'; latencyMs?: number; error?: string }> = {}
     let healthy = true
@@ -121,10 +137,16 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     const dbStart = Date.now()
     try {
       await db.execute(sql`SELECT 1`)
-      checks.database = { status: 'ok', latencyMs: Date.now() - dbStart }
+      const dbLatency = Date.now() - dbStart
+      checks.database = { status: 'ok', latencyMs: dbLatency }
+      // Record database health latency metric
+      recordHealthLatency('database', dbLatency)
     } catch (err: any) {
       healthy = false
-      checks.database = { status: 'error', latencyMs: Date.now() - dbStart, error: err.message }
+      const dbLatency = Date.now() - dbStart
+      checks.database = { status: 'error', latencyMs: dbLatency, error: err.message }
+      // Record database health latency metric even on error
+      recordHealthLatency('database', dbLatency)
     }
 
     // Check Redis via BullMQ queue client
@@ -132,11 +154,20 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     try {
       const client = await queue.client
       await client.ping()
-      checks.redis = { status: 'ok', latencyMs: Date.now() - redisStart }
+      const redisLatency = Date.now() - redisStart
+      checks.redis = { status: 'ok', latencyMs: redisLatency }
+      // Record Redis health latency metric
+      recordHealthLatency('redis', redisLatency)
     } catch (err: any) {
       healthy = false
-      checks.redis = { status: 'error', latencyMs: Date.now() - redisStart, error: err.message }
+      const redisLatency = Date.now() - redisStart
+      checks.redis = { status: 'error', latencyMs: redisLatency, error: err.message }
+      // Record Redis health latency metric even on error
+      recordHealthLatency('redis', redisLatency)
     }
+
+    // Update health status for observable gauge
+    currentHealthStatus = healthy ? 1 : 0
 
     const response = {
       status: healthy ? 'ok' : 'degraded',

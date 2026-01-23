@@ -88,3 +88,21 @@ export type {
 
 // Redis
 export { parseRedisUrl, type RedisConnectionConfig } from './redis/index.js'
+
+// Metrics
+export {
+  meter,
+  metrics,
+  messagesSentCounter,
+  processingDurationHistogram,
+  providerErrorsCounter,
+  providerRateLimitsCounter,
+  queueJobsCounter,
+  healthLatencyHistogram,
+  healthStatusGauge,
+  recordMessageSent,
+  recordProcessingDuration,
+  recordProviderError,
+  recordRateLimit,
+  recordHealthLatency,
+} from './metrics/index.js'

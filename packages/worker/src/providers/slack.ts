@@ -10,6 +10,12 @@ import type {
   SlackRecipient,
   SendOptions,
 } from '@maritaca/core'
+import {
+  recordMessageSent,
+  recordProcessingDuration,
+  recordProviderError,
+  recordRateLimit,
+} from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
 import { LRUCache } from 'lru-cache'
 
@@ -415,15 +421,24 @@ export class SlackProvider implements Provider {
    * Includes retry logic for rate limit (429) errors with exponential backoff
    */
   async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
+    const startTime = Date.now()
+
     return tracer.startActiveSpan('slack.send', async (span) => {
       const { botToken, recipientInfo, text, blocks } = prepared.data
       const messageId = options?.messageId
 
+      // Add semantic span attributes for messaging operations
+      span.setAttribute('messaging.system', 'slack')
+      span.setAttribute('messaging.operation', 'send')
       if (messageId) span.setAttribute('message.id', messageId)
 
       if (!botToken) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: 'Missing token' })
         span.end()
+        // Record metrics for the failed send
+        recordMessageSent('slack', 'error')
+        recordProviderError('slack', 'MISSING_TOKEN')
+        recordProcessingDuration('slack', 'slack', Date.now() - startTime)
         return {
           success: false,
           error: {
@@ -445,6 +460,10 @@ export class SlackProvider implements Provider {
         if (targets.length === 0) {
           span.setStatus({ code: SpanStatusCode.ERROR, message: 'No valid recipients' })
           span.end()
+          // Record metrics for the failed send
+          recordMessageSent('slack', 'error')
+          recordProviderError('slack', 'NO_VALID_RECIPIENTS')
+          recordProcessingDuration('slack', 'slack', Date.now() - startTime)
           return {
             success: false,
             error: {
@@ -475,10 +494,19 @@ export class SlackProvider implements Provider {
             results.find((r) => r.status === 'rejected') as PromiseRejectedResult
           span.setStatus({ code: SpanStatusCode.ERROR, message: 'All sends failed' })
           span.end()
+          const errorCode = this.getErrorCode(firstError.reason)
+          // Record metrics for the failed send
+          recordMessageSent('slack', 'error')
+          recordProviderError('slack', errorCode)
+          recordProcessingDuration('slack', 'slack', Date.now() - startTime)
+          // Track rate limits specifically
+          if (errorCode === 'SLACK_RATE_LIMITED') {
+            recordRateLimit('slack')
+          }
           return {
             success: false,
             error: {
-              code: this.getErrorCode(firstError.reason),
+              code: errorCode,
               message: firstError.reason?.message || 'Failed to send Slack message',
               details: { ...firstError.reason, emailLookupErrors },
             },
@@ -492,6 +520,10 @@ export class SlackProvider implements Provider {
 
         span.setStatus({ code: SpanStatusCode.OK })
         span.end()
+
+        // Record metrics for successful send
+        recordMessageSent('slack', 'success')
+        recordProcessingDuration('slack', 'slack', Date.now() - startTime)
 
         return {
           success: true,
@@ -507,10 +539,19 @@ export class SlackProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.ERROR, message: error.message })
         span.recordException(error)
         span.end()
+        const errorCode = this.getErrorCode(error)
+        // Record metrics for the failed send
+        recordMessageSent('slack', 'error')
+        recordProviderError('slack', errorCode)
+        recordProcessingDuration('slack', 'slack', Date.now() - startTime)
+        // Track rate limits specifically
+        if (errorCode === 'SLACK_RATE_LIMITED') {
+          recordRateLimit('slack')
+        }
         return {
           success: false,
           error: {
-            code: this.getErrorCode(error),
+            code: errorCode,
             message: error.message || 'Failed to send Slack message',
             details: error,
           },

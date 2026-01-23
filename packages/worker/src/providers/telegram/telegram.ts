@@ -9,7 +9,13 @@ import type {
   TelegramRecipient,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
-import { createSyncLogger } from '@maritaca/core'
+import {
+  createSyncLogger,
+  recordMessageSent,
+  recordProcessingDuration,
+  recordProviderError,
+  recordRateLimit,
+} from '@maritaca/core'
 import { Bot } from 'grammy'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
@@ -213,10 +219,16 @@ export class TelegramProvider implements Provider {
    * Send message via Telegram API
    */
   async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
+    const startTime = Date.now()
+
     return tracer.startActiveSpan('telegram.send', async (span) => {
       const { chatIds, text, parseMode, disableNotification, replyToMessageId } = prepared.data
       const messageId = options?.messageId
 
+      // Add semantic span attributes for messaging operations
+      span.setAttribute('messaging.system', 'telegram')
+      span.setAttribute('messaging.operation', 'send')
+      span.setAttribute('messaging.destination.kind', 'chat')
       span.setAttribute('recipient_count', chatIds.length)
       span.setAttribute('channel', 'telegram')
       if (messageId) span.setAttribute('message.id', messageId)
@@ -239,10 +251,20 @@ export class TelegramProvider implements Provider {
           span.setStatus({ code: SpanStatusCode.ERROR, message: 'All sends failed' })
           span.end()
 
+          const errorCode = this.getErrorCode(firstError.reason)
+          // Record metrics for the failed send
+          recordMessageSent('telegram', 'error')
+          recordProviderError('telegram', errorCode)
+          recordProcessingDuration('telegram', 'telegram', Date.now() - startTime)
+          // Track rate limits specifically
+          if (errorCode === 'TELEGRAM_RATE_LIMITED') {
+            recordRateLimit('telegram')
+          }
+
           return {
             success: false,
             error: {
-              code: this.getErrorCode(firstError.reason),
+              code: errorCode,
               message: firstError.reason?.message || 'Failed to send Telegram message',
               details: {
                 errorCode: firstError.reason?.error_code,
@@ -259,6 +281,10 @@ export class TelegramProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.OK })
         span.end()
 
+        // Record metrics for successful send
+        recordMessageSent('telegram', 'success')
+        recordProcessingDuration('telegram', 'telegram', Date.now() - startTime)
+
         return {
           success: true,
           data: {
@@ -272,6 +298,11 @@ export class TelegramProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.ERROR, message: error.message })
         span.recordException(error)
         span.end()
+
+        // Record metrics for the failed send
+        recordMessageSent('telegram', 'error')
+        recordProviderError('telegram', 'TELEGRAM_EXCEPTION')
+        recordProcessingDuration('telegram', 'telegram', Date.now() - startTime)
 
         return {
           success: false,

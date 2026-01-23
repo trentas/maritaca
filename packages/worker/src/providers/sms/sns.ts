@@ -9,7 +9,14 @@ import type {
   SmsRecipient,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
-import { createSyncLogger, maskPhone } from '@maritaca/core'
+import {
+  createSyncLogger,
+  maskPhone,
+  recordMessageSent,
+  recordProcessingDuration,
+  recordProviderError,
+  recordRateLimit,
+} from '@maritaca/core'
 import { SNSClient, PublishCommand, GetSMSAttributesCommand } from '@aws-sdk/client-sns'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
@@ -178,10 +185,18 @@ export class SnsSmsProvider implements Provider {
    * Send SMS via AWS SNS
    */
   async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
+    const startTime = Date.now()
+
     return tracer.startActiveSpan('sns-sms.send', async (span) => {
       const { phoneNumbers, message, messageType, senderId } = prepared.data
       const messageId = options?.messageId
 
+      // Add semantic span attributes for messaging operations
+      span.setAttribute('messaging.system', 'sns')
+      span.setAttribute('messaging.operation', 'send')
+      span.setAttribute('messaging.destination.kind', 'sms')
+      span.setAttribute('cloud.provider', 'aws')
+      span.setAttribute('cloud.region', this.region)
       span.setAttribute('recipient_count', phoneNumbers.length)
       span.setAttribute('message_type', messageType)
       span.setAttribute('region', this.region)
@@ -205,6 +220,16 @@ export class SnsSmsProvider implements Provider {
           span.setStatus({ code: SpanStatusCode.ERROR, message: 'All sends failed' })
           span.end()
 
+          const errorCode = firstError.reason?.name || 'SNS_SMS_ERROR'
+          // Record metrics for the failed send
+          recordMessageSent('sms', 'error')
+          recordProviderError('sns-sms', errorCode)
+          recordProcessingDuration('sms', 'sns-sms', Date.now() - startTime)
+          // Track rate limits (SNS uses Throttling exception)
+          if (errorCode === 'Throttling' || firstError.reason?.$metadata?.httpStatusCode === 429) {
+            recordRateLimit('sns-sms')
+          }
+
           return {
             success: false,
             error: {
@@ -222,6 +247,10 @@ export class SnsSmsProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.OK })
         span.end()
 
+        // Record metrics for successful send
+        recordMessageSent('sms', 'success')
+        recordProcessingDuration('sms', 'sns-sms', Date.now() - startTime)
+
         return {
           success: true,
           data: {
@@ -235,6 +264,11 @@ export class SnsSmsProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.ERROR, message: error.message })
         span.recordException(error)
         span.end()
+
+        // Record metrics for the failed send
+        recordMessageSent('sms', 'error')
+        recordProviderError('sns-sms', 'SNS_SMS_EXCEPTION')
+        recordProcessingDuration('sms', 'sns-sms', Date.now() - startTime)
 
         return {
           success: false,

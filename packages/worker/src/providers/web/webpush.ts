@@ -9,7 +9,13 @@ import type {
   WebPushRecipient,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
-import { createSyncLogger } from '@maritaca/core'
+import {
+  createSyncLogger,
+  recordMessageSent,
+  recordProcessingDuration,
+  recordProviderError,
+  recordRateLimit,
+} from '@maritaca/core'
 import webpush from 'web-push'
 import type { PushSubscription, SendResult } from 'web-push'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
@@ -216,10 +222,16 @@ export class WebPushProvider implements Provider {
    * Send Web Push notification
    */
   async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
+    const startTime = Date.now()
+
     return tracer.startActiveSpan('web-push.send', async (span) => {
       const { recipients, notification, ttl, urgency } = prepared.data
       const messageId = options?.messageId
 
+      // Add semantic span attributes for messaging operations
+      span.setAttribute('messaging.system', 'web-push')
+      span.setAttribute('messaging.operation', 'send')
+      span.setAttribute('messaging.destination.kind', 'web')
       span.setAttribute('recipient_count', recipients.length)
       span.setAttribute('urgency', urgency)
       if (messageId) span.setAttribute('message.id', messageId)
@@ -246,13 +258,23 @@ export class WebPushProvider implements Provider {
           span.setStatus({ code: SpanStatusCode.ERROR, message: 'All sends failed' })
           span.end()
 
+          const statusCode = firstError.reason?.statusCode
+          // Record metrics for the failed send
+          recordMessageSent('web', 'error')
+          recordProviderError('web-push', statusCode?.toString() || 'WEB_PUSH_ERROR')
+          recordProcessingDuration('web', 'web-push', Date.now() - startTime)
+          // Track rate limits (HTTP 429)
+          if (statusCode === 429) {
+            recordRateLimit('web-push')
+          }
+
           return {
             success: false,
             error: {
               code: 'WEB_PUSH_ERROR',
               message: firstError.reason?.message || 'Failed to send web push notification',
               details: {
-                statusCode: firstError.reason?.statusCode,
+                statusCode,
                 expired,
               },
             },
@@ -261,6 +283,10 @@ export class WebPushProvider implements Provider {
 
         span.setStatus({ code: SpanStatusCode.OK })
         span.end()
+
+        // Record metrics for successful send
+        recordMessageSent('web', 'success')
+        recordProcessingDuration('web', 'web-push', Date.now() - startTime)
 
         return {
           success: true,
@@ -274,6 +300,11 @@ export class WebPushProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.ERROR, message: error.message })
         span.recordException(error)
         span.end()
+
+        // Record metrics for the failed send
+        recordMessageSent('web', 'error')
+        recordProviderError('web-push', 'WEB_PUSH_EXCEPTION')
+        recordProcessingDuration('web', 'web-push', Date.now() - startTime)
 
         return {
           success: false,

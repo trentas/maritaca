@@ -8,7 +8,14 @@ import type {
   SendOptions,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
-import { createSyncLogger, maskLogData } from '@maritaca/core'
+import {
+  createSyncLogger,
+  maskLogData,
+  recordMessageSent,
+  recordProcessingDuration,
+  recordProviderError,
+  recordRateLimit,
+} from '@maritaca/core'
 import { SESClient, SendEmailCommand, GetAccountCommand } from '@aws-sdk/client-ses'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
@@ -203,11 +210,19 @@ export class SESProvider implements Provider {
    * Send email via AWS SES
    */
   async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
+    const startTime = Date.now()
+
     return tracer.startActiveSpan('ses.send', async (span) => {
       const { to, from, subject, text, html } = prepared.data
       const recipients = Array.isArray(to) ? to : [to]
       const messageId = options?.messageId
 
+      // Add semantic span attributes for messaging operations
+      span.setAttribute('messaging.system', 'ses')
+      span.setAttribute('messaging.operation', 'send')
+      span.setAttribute('messaging.destination.kind', 'email')
+      span.setAttribute('cloud.provider', 'aws')
+      span.setAttribute('cloud.region', this.region)
       span.setAttribute('to_count', recipients.length)
       span.setAttribute('from', from)
       span.setAttribute('subject', subject)
@@ -268,6 +283,10 @@ export class SESProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.OK })
         span.end()
 
+        // Record metrics for successful send
+        recordMessageSent('email', 'success')
+        recordProcessingDuration('email', 'ses', Date.now() - startTime)
+
         return {
           success: true,
           data: {
@@ -279,7 +298,7 @@ export class SESProvider implements Provider {
           externalId: response.MessageId,
         }
       } catch (error) {
-        const err = error as Error
+        const err = error as Error & { name?: string; $metadata?: { httpStatusCode?: number } }
         this.logger.error(
           {
             provider: 'ses',
@@ -294,10 +313,20 @@ export class SESProvider implements Provider {
         span.recordException(err)
         span.end()
 
+        const errorCode = err.name || 'SES_ERROR'
+        // Record metrics for the failed send
+        recordMessageSent('email', 'error')
+        recordProviderError('ses', errorCode)
+        recordProcessingDuration('email', 'ses', Date.now() - startTime)
+        // Track rate limits (SES uses Throttling exception)
+        if (errorCode === 'Throttling' || err.$metadata?.httpStatusCode === 429) {
+          recordRateLimit('ses')
+        }
+
         return {
           success: false,
           error: {
-            code: err.name || 'SES_ERROR',
+            code: errorCode,
             message: err.message,
           },
         }

@@ -9,7 +9,13 @@ import type {
   PushRecipient,
 } from '@maritaca/core'
 import { createId } from '@paralleldrive/cuid2'
-import { createSyncLogger } from '@maritaca/core'
+import {
+  createSyncLogger,
+  recordMessageSent,
+  recordProcessingDuration,
+  recordProviderError,
+  recordRateLimit,
+} from '@maritaca/core'
 import { 
   SNSClient, 
   PublishCommand, 
@@ -181,10 +187,18 @@ export class SnsPushProvider implements Provider {
    * Send push notification via AWS SNS
    */
   async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
+    const startTime = Date.now()
+
     return tracer.startActiveSpan('sns-push.send', async (span) => {
       const { recipients, title, body, badge, sound, data, ttl } = prepared.data
       const messageId = options?.messageId
 
+      // Add semantic span attributes for messaging operations
+      span.setAttribute('messaging.system', 'sns')
+      span.setAttribute('messaging.operation', 'send')
+      span.setAttribute('messaging.destination.kind', 'push')
+      span.setAttribute('cloud.provider', 'aws')
+      span.setAttribute('cloud.region', this.region)
       span.setAttribute('recipient_count', recipients.length)
       span.setAttribute('region', this.region)
       if (messageId) span.setAttribute('message.id', messageId)
@@ -207,6 +221,16 @@ export class SnsPushProvider implements Provider {
           span.setStatus({ code: SpanStatusCode.ERROR, message: 'All sends failed' })
           span.end()
 
+          const errorCode = firstError.reason?.name || 'SNS_PUSH_ERROR'
+          // Record metrics for the failed send
+          recordMessageSent('push', 'error')
+          recordProviderError('sns-push', errorCode)
+          recordProcessingDuration('push', 'sns-push', Date.now() - startTime)
+          // Track rate limits (SNS uses Throttling exception)
+          if (errorCode === 'Throttling' || firstError.reason?.$metadata?.httpStatusCode === 429) {
+            recordRateLimit('sns-push')
+          }
+
           return {
             success: false,
             error: {
@@ -224,6 +248,10 @@ export class SnsPushProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.OK })
         span.end()
 
+        // Record metrics for successful send
+        recordMessageSent('push', 'success')
+        recordProcessingDuration('push', 'sns-push', Date.now() - startTime)
+
         return {
           success: true,
           data: {
@@ -237,6 +265,11 @@ export class SnsPushProvider implements Provider {
         span.setStatus({ code: SpanStatusCode.ERROR, message: error.message })
         span.recordException(error)
         span.end()
+
+        // Record metrics for the failed send
+        recordMessageSent('push', 'error')
+        recordProviderError('sns-push', 'SNS_PUSH_EXCEPTION')
+        recordProcessingDuration('push', 'sns-push', Date.now() - startTime)
 
         return {
           success: false,
