@@ -1,16 +1,18 @@
 import Fastify, { FastifyInstance } from 'fastify'
 import fastifyRateLimit from '@fastify/rate-limit'
+import Redis from 'ioredis'
 import { sql } from 'drizzle-orm'
 import {
   createDbClient,
   createLogger,
-  parseRedisUrl,
   recordHealthLatency,
   healthStatusGauge,
   type DbClient,
+  type Logger,
 } from '@maritaca/core'
 import { messageRoutes } from './routes/messages.js'
-import { authMiddleware } from './middleware/auth.js'
+import { resendWebhookRoutes } from './routes/webhooks/resend.js'
+import { createAuthOnRequestHandler } from './middleware/auth.js'
 import { createQueue } from './services/queue.js'
 
 export interface ServerOptions {
@@ -18,17 +20,20 @@ export interface ServerOptions {
   host?: string
   databaseUrl: string
   redisUrl: string
+  /** Optional shared logger; if not provided, one is created from logLevel/env */
+  logger?: Logger
+  /** Log level (e.g. 'info', 'debug'); defaults to process.env.LOG_LEVEL or 'info' */
+  logLevel?: string
+  /** Rate limit: max requests per window; defaults to process.env.RATE_LIMIT_MAX or 100 */
+  rateLimitMax?: number
+  /** Rate limit: time window in ms; defaults to process.env.RATE_LIMIT_WINDOW_MS or 60000 */
+  rateLimitTimeWindowMs?: number
 }
 
-/**
- * Rate limit configuration from environment variables
- */
-function getRateLimitConfig() {
+function getRateLimitConfigFromOptions(options: ServerOptions) {
   return {
-    // Maximum requests per time window (default: 100)
-    max: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
-    // Time window in milliseconds (default: 1 minute)
-    timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
+    max: options.rateLimitMax ?? parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
+    timeWindow: options.rateLimitTimeWindowMs ?? parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
   }
 }
 
@@ -36,10 +41,13 @@ function getRateLimitConfig() {
  * Create and configure Fastify server instance
  */
 export async function createServer(options: ServerOptions): Promise<FastifyInstance> {
-  const logger = await createLogger({
-    serviceName: 'maritaca-api',
-    level: process.env.LOG_LEVEL || 'info',
-  })
+  const logLevel = (options.logLevel ?? process.env.LOG_LEVEL ?? 'info').toLowerCase()
+  const logger =
+    options.logger ??
+    (await createLogger({
+      serviceName: 'maritaca-api',
+      level: logLevel,
+    }))
   const server = Fastify({ logger: logger as any })
 
   // Register environment variables
@@ -66,29 +74,35 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   const queue = createQueue(options.redisUrl)
   server.decorate('queue', queue)
 
+  // Decorate request with projectId so it propagates in encapsulated contexts (e.g. prefix /v1)
+  server.decorateRequest('projectId', null)
+  server.decorateRequest('apiKey', undefined)
+
+  // Add auth hook on root so it runs for all requests (including routes in sibling plugins)
+  server.addHook('onRequest', createAuthOnRequestHandler())
+
   // Register rate limiting with Redis store for distributed rate limiting
-  const rateLimitConfig = getRateLimitConfig()
-  const redisConnection = parseRedisUrl(options.redisUrl)
-  
+  // @fastify/rate-limit requires an ioredis instance (defineCommand), not a config object
+  const rateLimitConfig = getRateLimitConfigFromOptions(options)
+  const rateLimitRedis = new Redis(options.redisUrl, {
+    connectTimeout: 10000,
+    maxRetriesPerRequest: 3,
+  })
+  server.decorate('rateLimitRedis', rateLimitRedis)
+
   await server.register(fastifyRateLimit, {
     max: rateLimitConfig.max,
     timeWindow: rateLimitConfig.timeWindow,
-    // Use Redis for distributed rate limiting across multiple instances
-    redis: {
-      host: redisConnection.host,
-      port: redisConnection.port,
-      password: redisConnection.password,
-      db: redisConnection.db,
-    },
+    redis: rateLimitRedis,
     // Use projectId as the key for rate limiting (after auth middleware runs)
     keyGenerator: (request) => {
       // Use projectId if available (authenticated requests)
       // Fall back to IP for unauthenticated requests (e.g., before auth fails)
       return request.projectId || request.ip
     },
-    // Skip rate limiting for health check
+    // Skip rate limiting for health check and Resend webhook
     allowList: (request) => {
-      return request.url === '/health'
+      return request.url === '/health' || request.url === '/webhooks/resend'
     },
     // Custom error response
     errorResponseBuilder: (request, context) => {
@@ -112,11 +126,9 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     },
   })
 
-  // Register authentication middleware
-  await server.register(authMiddleware)
-
-  // Register routes
-  await server.register(messageRoutes, { prefix: '/v1' })
+  // Register routes on same server (no prefix encapsulation) so request.projectId from auth is visible
+  await server.register(messageRoutes)
+  await server.register(resendWebhookRoutes)
 
   // Track health status for metrics
   let currentHealthStatus = 1 // 1 = healthy, 0 = degraded
@@ -185,6 +197,7 @@ declare module 'fastify' {
   interface FastifyInstance {
     db: DbClient
     queue: ReturnType<typeof createQueue>
+    rateLimitRedis: Redis
   }
 }
 
@@ -204,6 +217,9 @@ export async function startServer(options: ServerOptions): Promise<void> {
       
       // Close queue client (Redis connection)
       await server.queue.close()
+      
+      // Close rate limit Redis client
+      await server.rateLimitRedis.quit()
       
       // Close database connection pool
       await server.db.close()

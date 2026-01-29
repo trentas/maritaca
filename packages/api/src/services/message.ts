@@ -1,12 +1,13 @@
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { createId } from '@paralleldrive/cuid2'
 import type { Envelope } from '@maritaca/core'
-import { messages, events, type DbClient } from '@maritaca/core'
+import { messages, attempts, events, type DbClient } from '@maritaca/core'
 
 export interface CreateMessageResult {
   messageId: string
   status: string
   channels: string[]
+  created: boolean
 }
 
 export interface CreateMessageOptions {
@@ -18,20 +19,30 @@ export interface CreateMessageOptions {
 /**
  * Create a new message with idempotency checking
  * Uses INSERT ... ON CONFLICT to handle race conditions atomically
+ *
+ * Events: message.accepted is emitted here when the message is persisted.
+ * The route emits message.queued when the message is enqueued for delivery (only when created === true).
  */
 export async function createMessage(
   options: CreateMessageOptions,
 ): Promise<CreateMessageResult> {
   const { db, envelope, projectId } = options
 
+  const projectIdStr =
+    typeof projectId === 'string' && projectId.trim() !== '' ? projectId.trim() : null
+  if (projectIdStr === null) {
+    throw new Error('projectId is required')
+  }
+
   const messageId = createId()
 
   // Attempt to insert - ON CONFLICT DO NOTHING handles race conditions
+  // Use sql`...` for project_id so the value is always sent (avoids Drizzle omitting undefined)
   const inserted = await db
     .insert(messages)
     .values({
       id: messageId,
-      projectId,
+      projectId: sql`${projectIdStr}` as unknown as string,
       idempotencyKey: envelope.idempotencyKey,
       envelope,
       status: 'pending',
@@ -58,6 +69,7 @@ export async function createMessage(
       messageId: message.id,
       status: message.status,
       channels: envelope.channels,
+      created: true,
     }
   }
 
@@ -67,7 +79,7 @@ export async function createMessage(
     .from(messages)
     .where(
       and(
-        eq(messages.projectId, projectId),
+        eq(messages.projectId, projectIdStr),
         eq(messages.idempotencyKey, envelope.idempotencyKey),
       ),
     )
@@ -77,6 +89,7 @@ export async function createMessage(
     messageId: existing.id,
     status: existing.status,
     channels: envelope.channels,
+    created: false,
   }
 }
 
@@ -86,8 +99,13 @@ export interface GetMessageOptions {
   projectId: string
 }
 
+/** Provider status per channel/provider (e.g. Resend last_event) */
+export type ProviderStatus = {
+  email?: { resend?: { last_event: string } }
+}
+
 /**
- * Get message by ID with events
+ * Get message by ID with events and attempts (including provider status)
  * Only returns messages belonging to the specified project
  */
 export async function getMessage(
@@ -104,6 +122,15 @@ export async function getMessage(
     payload?: any
     createdAt: Date
   }>
+  attempts: Array<{
+    id: string
+    channel: string
+    provider: string
+    status: string
+    externalId?: string | null
+    providerLastEvent?: string | null
+  }>
+  providerStatus: ProviderStatus
 } | null> {
   const { db, messageId, projectId } = options
 
@@ -122,11 +149,19 @@ export async function getMessage(
     return null
   }
 
-  const messageEvents = await db
-    .select()
-    .from(events)
-    .where(eq(events.messageId, messageId))
-    .orderBy(events.createdAt)
+  const [messageEvents, messageAttempts] = await Promise.all([
+    db.select().from(events).where(eq(events.messageId, messageId)).orderBy(events.createdAt),
+    db.select().from(attempts).where(eq(attempts.messageId, messageId)),
+  ])
+
+  const providerStatus: ProviderStatus = {}
+  for (const a of messageAttempts) {
+    if (a.provider === 'resend' && a.channel === 'email' && a.providerLastEvent) {
+      if (!providerStatus.email) providerStatus.email = {}
+      providerStatus.email.resend = { last_event: a.providerLastEvent }
+      break
+    }
+  }
 
   return {
     id: message.id,
@@ -140,5 +175,14 @@ export async function getMessage(
       payload: e.payload || undefined,
       createdAt: e.createdAt,
     })),
+    attempts: messageAttempts.map((a) => ({
+      id: a.id,
+      channel: a.channel,
+      provider: a.provider,
+      status: a.status,
+      externalId: a.externalId ?? undefined,
+      providerLastEvent: a.providerLastEvent ?? undefined,
+    })),
+    providerStatus,
   }
 }

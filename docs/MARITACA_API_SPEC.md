@@ -107,7 +107,7 @@ JSON object validated by the core schema (Zod). Main fields:
 - `400`: invalid body — `error: "Validation Error"`, `message: "Invalid envelope format"`, `details` with Zod errors.
 - `401`: not authenticated or project not identified.
 - `429`: rate limit exceeded (see Rate limiting).
-- `500`: internal error — `error: "Internal Server Error"`, `message: "Failed to create message"`.
+- `500`: internal error — `error: "Internal Server Error"`, `message: "Failed to create message"`. In development, the response may include a `detail` field with the underlying error (e.g. database or Redis connection failure). Check API logs and ensure PostgreSQL and Redis are running and reachable (`DATABASE_URL`, `REDIS_URL`); you can use `GET /health` to verify connectivity.
 
 **Idempotency**: The pair `(projectId, idempotencyKey)` is unique. Resubmitting with the same key returns the same `messageId` and status of the existing record (201 with existing record data).
 
@@ -115,7 +115,7 @@ JSON object validated by the core schema (Zod). Main fields:
 
 ### GET /v1/messages/:id
 
-Returns a message and its events (status and history).
+Returns a message, its events, attempts, and provider status (e.g. Resend delivery status).
 
 **Headers**
 
@@ -145,9 +145,29 @@ Returns a message and its events (status and history).
       "payload": "object (optional)",
       "createdAt": "string ISO 8601"
     }
-  ]
+  ],
+  "attempts": [
+    {
+      "id": "string",
+      "channel": "string",
+      "provider": "string",
+      "status": "string",
+      "externalId": "string (optional)",
+      "providerLastEvent": "string (optional, e.g. delivered, bounced)"
+    }
+  ],
+  "providerStatus": {
+    "email": {
+      "resend": { "last_event": "string (e.g. delivered, bounced, delivery_delayed)" }
+    }
+  }
 }
 ```
+
+- **attempts**: Per-channel delivery attempts; `externalId` is the provider's id (e.g. Resend email id); `providerLastEvent` is updated via webhooks or on-demand fetch.
+- **providerStatus**: Aggregated provider delivery status. When email is sent via Resend and status is known (webhook or on-demand), `providerStatus.email.resend.last_event` is set (e.g. `delivered`, `bounced`, `delivery_delayed`, `sent`, `failed`).
+
+Event order: `message.accepted` (persisted) is emitted first; `message.queued` (enqueued for delivery) is emitted only when the message is newly created, not on idempotency hit.
 
 **Errors**
 
@@ -185,6 +205,33 @@ Health check (no authentication). Used for readiness/liveness.
   - `retryAfter`: seconds
 
 The `/health` endpoint is not rate limited.
+
+## Webhooks
+
+### POST /webhooks/resend
+
+Receives Resend delivery events (e.g. `email.delivered`, `email.bounced`) to update provider status. No authentication; requests are verified using Svix signatures.
+
+**Configuration**
+
+1. Set `RESEND_WEBHOOK_SECRET` (format `whsec_...`) from Resend Dashboard > Webhooks > [your webhook] > Signing secret.
+2. In Resend Dashboard, create a webhook and set the URL to your API base + `/webhooks/resend` (e.g. `https://api.example.com/webhooks/resend`).
+
+**Headers** (sent by Resend)
+
+| Header            | Description                    |
+|-------------------|--------------------------------|
+| `svix-id`         | Unique message identifier      |
+| `svix-timestamp`  | Unix timestamp of the attempt  |
+| `svix-signature`  | Base64-encoded signature       |
+
+**Body**: JSON with `type` (e.g. `email.delivered`, `email.bounced`) and `data.email_id` (Resend email id). The API verifies the signature with the raw body and updates `attempts.provider_last_event` for the attempt whose `external_id` matches `data.email_id`. GET /v1/messages/:id then returns this status in `providerStatus.email.resend.last_event`.
+
+**Responses**
+
+- `200`: Event received (and processed if a matching attempt was found).
+- `400`: Missing or invalid Svix headers, or invalid signature.
+- `503`: `RESEND_WEBHOOK_SECRET` not configured.
 
 ## Supported channels
 

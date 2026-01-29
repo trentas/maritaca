@@ -16,7 +16,8 @@ import {
   recordProviderError,
   recordRateLimit,
 } from '@maritaca/core'
-import { SESClient, SendEmailCommand, GetAccountCommand } from '@aws-sdk/client-ses'
+import sesSdk from '@aws-sdk/client-ses'
+const { SESClient, SendEmailCommand, GetAccountCommand } = sesSdk
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
 /**

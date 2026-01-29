@@ -329,7 +329,7 @@ export class ResendProvider implements Provider {
         channel: 'email',
         provider: 'resend',
         timestamp: new Date(),
-        payload: response.data,
+        payload: { ...response.data, externalId: response.externalId },
       })
     } else {
       events.push({

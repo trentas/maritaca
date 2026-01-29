@@ -17,7 +17,8 @@ import {
   recordProviderError,
   recordRateLimit,
 } from '@maritaca/core'
-import { Twilio } from 'twilio'
+import twilioPkg from 'twilio'
+const { Twilio } = twilioPkg
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
 /**

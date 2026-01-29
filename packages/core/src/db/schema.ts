@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, varchar, pgEnum, index } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, jsonb, varchar, pgEnum, index, uniqueIndex } from 'drizzle-orm/pg-core'
 import { createId } from '@paralleldrive/cuid2'
 import type { Envelope } from '../types/envelope.js'
 import type { MessageStatus, AttemptStatus, EventType } from '../types/event.js'
@@ -42,7 +42,8 @@ export const messages = pgTable('messages', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => ({
   projectIdIdx: index('messages_project_id_idx').on(table.projectId),
-  idempotencyIdx: index('messages_idempotency_idx').on(table.projectId, table.idempotencyKey),
+  // UNIQUE so INSERT ... ON CONFLICT (project_id, idempotency_key) works
+  idempotencyIdx: uniqueIndex('messages_idempotency_idx').on(table.projectId, table.idempotencyKey),
 }))
 
 /**
@@ -62,8 +63,13 @@ export const attempts = pgTable('attempts', {
   error: text('error'),
   startedAt: timestamp('started_at'),
   finishedAt: timestamp('finished_at'),
+  /** Provider's external id (e.g. Resend email id) for webhook lookup and on-demand status fetch */
+  externalId: varchar('external_id', { length: 255 }),
+  /** Last delivery event from provider (e.g. delivered, bounced) updated via webhooks */
+  providerLastEvent: varchar('provider_last_event', { length: 50 }),
 }, (table) => ({
   messageIdIdx: index('attempts_message_id_idx').on(table.messageId),
+  externalIdIdx: index('attempts_external_id_idx').on(table.externalId),
 }))
 
 /**

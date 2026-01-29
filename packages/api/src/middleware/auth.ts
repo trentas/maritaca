@@ -24,20 +24,30 @@ function generateKeyPrefix(apiKey: string): string {
 }
 
 /**
- * API Key authentication middleware
- * Validates API keys from Authorization header
- * Uses keyPrefix for optimized database lookup
+ * Creates the onRequest handler for API key authentication.
+ * Must be added to the root server (server.addHook('onRequest', ...)) so it runs
+ * for all requests; if registered as a plugin, Fastify encapsulation prevents the
+ * hook from running for routes registered in sibling plugins.
  */
-export const authMiddleware: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('onRequest', async (request: FastifyRequest, reply) => {
-    // Skip authentication for health check
+export function createAuthOnRequestHandler(): (request: FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void> {
+  return async (request: FastifyRequest, reply: import('fastify').FastifyReply) => {
+    request.log.debug({ url: request.url }, '[auth] onRequest started')
+
+    // Skip authentication for health check and Resend webhook (verified by Svix signature)
     if (request.url === '/health') {
+      return
+    }
+    if (request.url === '/webhooks/resend' && request.method === 'POST') {
       return
     }
 
     const authHeader = request.headers.authorization
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      request.log.info(
+        { authHeaderPresent: !!authHeader, url: request.url },
+        '[auth] 401: Missing or invalid Authorization header',
+      )
       return reply.code(401).send({
         error: 'Unauthorized',
         message: 'Missing or invalid Authorization header',
@@ -47,6 +57,7 @@ export const authMiddleware: FastifyPluginAsync = async (fastify) => {
     const apiKey = authHeader.substring(7) // Remove 'Bearer ' prefix
 
     if (!apiKey) {
+      request.log.info({ url: request.url }, '[auth] 401: API key is required (Bearer with empty value)')
       return reply.code(401).send({
         error: 'Unauthorized',
         message: 'API key is required',
@@ -67,6 +78,10 @@ export const authMiddleware: FastifyPluginAsync = async (fastify) => {
 
     // If no candidates found, key is invalid
     if (candidateKeys.length === 0) {
+      request.log.info(
+        { keyPrefix, url: request.url },
+        '[auth] 401: Invalid API key (no candidate keys found for prefix)',
+      )
       return reply.code(401).send({
         error: 'Unauthorized',
         message: 'Invalid API key',
@@ -79,27 +94,66 @@ export const authMiddleware: FastifyPluginAsync = async (fastify) => {
 
     for (const keyRecord of candidateKeys) {
       try {
-        const matches = await bcrypt.compare(apiKey, keyRecord.keyHash)
+        const row = keyRecord as Record<string, unknown>
+        const hash = (row.keyHash ?? row.key_hash) as string | undefined
+        if (!hash) continue
+        const matches = await bcrypt.compare(apiKey, hash)
         if (matches) {
           isValid = true
-          projectId = keyRecord.projectId
+          // Driver may return snake_case (project_id) or Drizzle camelCase (projectId)
+          projectId = (row.projectId ?? row.project_id) as string | undefined
           break
         }
       } catch (err) {
-        // Continue checking other candidates
         continue
       }
     }
 
     if (!isValid) {
+      request.log.info(
+        { keyPrefix, candidatesCount: candidateKeys.length, url: request.url },
+        '[auth] 401: Invalid API key (bcrypt did not match any candidate)',
+      )
       return reply.code(401).send({
         error: 'Unauthorized',
         message: 'Invalid API key',
       })
     }
 
-    // Attach API key and project ID to request
+    // Reject keys that have no project (e.g. legacy rows with null project_id)
+    if (projectId == null || projectId === '') {
+      const firstRow = candidateKeys[0] as Record<string, unknown>
+      request.log.info(
+        {
+          projectId,
+          projectIdType: typeof projectId,
+          rowKeys: firstRow ? Object.keys(firstRow) : [],
+          projectIdFromRow: firstRow?.projectId ?? firstRow?.project_id,
+          url: request.url,
+        },
+        '[auth] 401: API key has no project (projectId null/empty)',
+      )
+      return reply.code(401).send({
+        error: 'Unauthorized',
+        message: 'API key has no project; create a new key with pnpm create-api-key [key] [project-id]',
+      })
+    }
+
+    // Attach API key and project ID to request (use decorateRequest so it propagates in encapsulated contexts)
     request.apiKey = apiKey
     request.projectId = projectId
-  })
+    request.log.info(
+      { projectId, keyPrefix, url: request.url },
+      '[auth] OK: API key valid, projectId set',
+    )
+  }
+}
+
+/**
+ * Plugin form of auth (adds the same handler as a hook in encapsulated context).
+ * Prefer adding the hook to the root server via createAuthOnRequestHandler() so
+ * it runs for all routes; this plugin is kept for backwards compatibility.
+ */
+export const authMiddleware: FastifyPluginAsync = async (fastify) => {
+  fastify.addHook('onRequest', createAuthOnRequestHandler())
 }

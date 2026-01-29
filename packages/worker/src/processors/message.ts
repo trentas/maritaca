@@ -149,6 +149,7 @@ export async function processMessageJob(
                 status: response.success ? 'succeeded' : 'failed',
                 error: response.error ? JSON.stringify(response.error) : null,
                 finishedAt: new Date(),
+                externalId: response.externalId ?? null,
               })
               .where(eq(attempts.id, attemptId))
           })

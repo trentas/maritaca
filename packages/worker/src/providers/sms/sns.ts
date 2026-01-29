@@ -17,7 +17,8 @@ import {
   recordProviderError,
   recordRateLimit,
 } from '@maritaca/core'
-import { SNSClient, PublishCommand, GetSMSAttributesCommand } from '@aws-sdk/client-sns'
+import snsSdk from '@aws-sdk/client-sns'
+const { SNSClient, PublishCommand, GetSMSAttributesCommand } = snsSdk
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
 /**

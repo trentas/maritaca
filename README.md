@@ -81,12 +81,14 @@ cp .env.example .env
 # Start services
 docker-compose up -d
 
-# Run migrations
-cd packages/core && pnpm db:push && cd ../..
+# Apply schema to database (from repo root)
+pnpm db:push
 
 # Create API key
 pnpm create-api-key
 ```
+
+**Troubleshooting "Failed to create message"**: If the API returns this error, the API server logs the underlying cause. Common causes: PostgreSQL or Redis not running or unreachable. Ensure `docker-compose up -d` is running and `DATABASE_URL` / `REDIS_URL` in `.env` match. Check connectivity with `GET http://localhost:7377/health`; if `database` or `redis` show `"status":"error"`, fix those services first. In development, the API may include a `detail` field in the error response with the underlying error message.
 
 ### Send your first notification
 
