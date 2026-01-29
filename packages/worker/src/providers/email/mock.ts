@@ -88,6 +88,7 @@ const tracer = trace.getTracer('maritaca-mock-email-provider')
  */
 export class MockEmailProvider implements Provider {
   channel = 'email' as const
+  name = 'mock-email'
   private logger: Logger
   private simulation: MockEmailProviderSimulation
 

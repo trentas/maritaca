@@ -102,6 +102,7 @@ const tracer = trace.getTracer('maritaca-slack-provider')
  */
 export class SlackProvider implements Provider {
   channel = 'slack' as const
+  name = 'slack'
   private retryConfig: RetryConfig
   
   /**

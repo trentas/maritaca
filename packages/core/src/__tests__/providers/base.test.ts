@@ -6,6 +6,7 @@ import type { Channel, Envelope } from '../../types/envelope.js'
 describe('Provider Interface', () => {
   class MockProvider implements Provider {
     channel: Channel = 'email'
+    name = 'mock'
 
     validate(envelope: Envelope): void {
       if (!envelope.payload.text) {
@@ -39,6 +40,7 @@ describe('Provider Interface', () => {
     it('should implement all required methods', () => {
       const provider = new MockProvider()
       expect(provider.channel).toBe('email')
+      expect(provider.name).toBe('mock')
       expect(typeof provider.validate).toBe('function')
       expect(typeof provider.prepare).toBe('function')
       expect(typeof provider.send).toBe('function')

@@ -87,7 +87,7 @@ export async function processMessageJob(
             id: attemptId,
             messageId,
             channel,
-            provider: provider.channel,
+            provider: provider.name,
             status: 'started',
             startedAt,
           })
@@ -97,7 +97,7 @@ export async function processMessageJob(
             messageId,
             type: 'attempt.started',
             channel,
-            provider: provider.channel,
+            provider: provider.name,
           })
         })
       })

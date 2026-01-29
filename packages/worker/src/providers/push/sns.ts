@@ -64,6 +64,7 @@ const tracer = trace.getTracer('maritaca-sns-push-provider')
  */
 export class SnsPushProvider implements Provider {
   channel = 'push' as const
+  name = 'sns-push'
   private logger: Logger
   private client: SNSClient
   private region: string

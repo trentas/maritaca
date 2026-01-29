@@ -98,6 +98,7 @@ const tracer = trace.getTracer('maritaca-telegram-provider')
  */
 export class TelegramProvider implements Provider {
   channel = 'telegram' as const
+  name = 'telegram'
   private logger: Logger
   private bot: Bot
   private botToken: string

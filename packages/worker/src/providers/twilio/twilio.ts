@@ -79,6 +79,9 @@ const tracer = trace.getTracer('maritaca-twilio-provider')
  */
 export class TwilioProvider implements Provider {
   channel: Channel
+  get name(): string {
+    return `twilio-${this.channel}`
+  }
   private logger: Logger
   private client: Twilio
   private smsFrom: string

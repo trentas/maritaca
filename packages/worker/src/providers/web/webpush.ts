@@ -86,6 +86,7 @@ const tracer = trace.getTracer('maritaca-web-push-provider')
  */
 export class WebPushProvider implements Provider {
   channel = 'web' as const
+  name = 'web-push'
   private logger: Logger
   private vapidPublicKey: string
   private vapidPrivateKey: string

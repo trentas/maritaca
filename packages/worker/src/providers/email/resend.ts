@@ -61,6 +61,7 @@ const tracer = trace.getTracer('maritaca-resend-provider')
  */
 export class ResendProvider implements Provider {
   channel = 'email' as const
+  name = 'resend'
   private logger: Logger
   private client: Resend
   private apiKey: string

@@ -73,6 +73,7 @@ const tracer = trace.getTracer('maritaca-ses-provider')
  */
 export class SESProvider implements Provider {
   channel = 'email' as const
+  name = 'ses'
   private logger: Logger
   private client: SESClient
   private region: string

@@ -10,6 +10,8 @@ import type { MaritacaEvent } from '../types/event.js'
 export interface Provider {
   /** Channel this provider handles */
   channel: Channel
+  /** Provider identifier for attempts and events (e.g. "resend", "ses", "slack") */
+  name: string
 
   /**
    * Validate that the envelope can be processed by this provider

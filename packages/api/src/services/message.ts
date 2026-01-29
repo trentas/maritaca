@@ -156,10 +156,14 @@ export async function getMessage(
 
   const providerStatus: ProviderStatus = {}
   for (const a of messageAttempts) {
-    if (a.provider === 'resend' && a.channel === 'email' && a.providerLastEvent) {
-      if (!providerStatus.email) providerStatus.email = {}
-      providerStatus.email.resend = { last_event: a.providerLastEvent }
-      break
+    if (a.provider === 'resend' && a.channel === 'email') {
+      const lastEvent =
+        a.providerLastEvent ?? (a.status === 'succeeded' && a.externalId ? 'sent' : null)
+      if (lastEvent) {
+        if (!providerStatus.email) providerStatus.email = {}
+        providerStatus.email.resend = { last_event: lastEvent }
+        break
+      }
     }
   }
 

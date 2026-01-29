@@ -65,6 +65,7 @@ const tracer = trace.getTracer('maritaca-sns-sms-provider')
  */
 export class SnsSmsProvider implements Provider {
   channel = 'sms' as const
+  name = 'sns-sms'
   private logger: Logger
   private client: SNSClient
   private region: string
