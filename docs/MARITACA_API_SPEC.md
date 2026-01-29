@@ -1,25 +1,25 @@
-# Especificações da API Maritaca
+# Maritaca API Specification
 
-Documento de referência para integrar aplicações ao Maritaca como cliente de mensageria.
+Reference document for integrating applications with Maritaca as a messaging client.
 
-## Visão geral
+## Overview
 
-- **Base URL**: configurável (ex.: `http://localhost:7377` ou URL do seu deployment)
-- **Prefixo**: `/v1` para todos os endpoints de mensagens
+- **Base URL**: configurable (e.g. `http://localhost:7377` or your deployment URL)
+- **Prefix**: `/v1` for all message endpoints
 - **Content-Type**: `application/json`
-- **Autenticação**: Bearer token (API key)
+- **Authentication**: Bearer token (API key)
 
-## Autenticação
+## Authentication
 
-Todas as requisições aos endpoints `/v1/*` devem enviar o header:
+All requests to `/v1/*` endpoints must send the header:
 
 ```
 Authorization: Bearer <API_KEY>
 ```
 
-- A API key é vinculada a um projeto no Maritaca.
-- Sem o header ou com formato inválido: `401 Unauthorized`.
-- Respostas de erro de autenticação:
+- The API key is tied to a project in Maritaca.
+- Missing or invalid header returns `401 Unauthorized`.
+- Authentication error responses:
   - `Missing or invalid Authorization header`
   - `API key is required`
   - `Invalid API key`
@@ -28,108 +28,108 @@ Authorization: Bearer <API_KEY>
 
 ### POST /v1/messages
 
-Cria e enfileira uma mensagem para envio em um ou mais canais.
+Creates and enqueues a message for delivery on one or more channels.
 
 **Headers**
 
-| Header             | Obrigatório | Descrição                    |
-|--------------------|-------------|------------------------------|
-| `Authorization`    | Sim         | `Bearer <API_KEY>`           |
-| `Content-Type`     | Sim         | `application/json`           |
+| Header             | Required | Description                    |
+|--------------------|----------|-------------------------------|
+| `Authorization`    | Yes      | `Bearer <API_KEY>`            |
+| `Content-Type`     | Yes      | `application/json`            |
 
 **Body (envelope)**
 
-Objeto JSON validado pelo schema do core (Zod). Campos principais:
+JSON object validated by the core schema (Zod). Main fields:
 
-| Campo             | Tipo                    | Obrigatório | Descrição |
-|-------------------|-------------------------|-------------|-----------|
-| `idempotencyKey`  | string (min 1)          | Sim         | Chave de idempotência (por projeto). |
-| `sender`          | object                  | Sim         | Remetente (nome, email). |
-| `recipient`       | object \| object[]      | Sim         | Um destinatário ou lista de destinatários. |
-| `channels`        | string[]                | Sim         | Um ou mais de: `email`, `slack`, `push`, `web`, `sms`, `whatsapp`, `telegram`. |
-| `payload`         | object                  | Sim         | Conteúdo: `text` (obrigatório), `title`, `html` opcionais. |
-| `metadata`        | object                  | Não         | Metadados opcionais. |
-| `overrides`       | object                  | Não         | Overrides por canal. |
-| `scheduleAt`      | string (ISO 8601)       | Não         | Agendamento. |
-| `priority`        | string                  | Não         | `low`, `normal`, `high`. |
+| Field             | Type                    | Required | Description |
+|-------------------|-------------------------|----------|-------------|
+| `idempotencyKey`  | string (min 1)          | Yes      | Idempotency key (per project). |
+| `sender`          | object                  | Yes      | Sender (name, email). |
+| `recipient`       | object \| object[]      | Yes      | Single recipient or array of recipients. |
+| `channels`        | string[]                | Yes      | One or more of: `email`, `slack`, `push`, `web`, `sms`, `whatsapp`, `telegram`. |
+| `payload`         | object                  | Yes      | Content: `text` (required), `title`, `html` optional. |
+| `metadata`        | object                  | No       | Optional metadata. |
+| `overrides`       | object                  | No       | Per-channel overrides. |
+| `scheduleAt`      | string (ISO 8601)       | No       | Scheduled send time. |
+| `priority`        | string                  | No       | `low`, `normal`, `high`. |
 
 **Sender**
 
 ```json
 {
-  "name": "string (opcional)",
-  "email": "string email (opcional)"
+  "name": "string (optional)",
+  "email": "string email (optional)"
 }
 ```
 
-**Recipient** (depende do canal; pelo menos um identificador por canal usado)
+**Recipient** (depends on channel; at least one identifier per channel used)
 
 - **Email**: `recipient.email` (string, email).
-- **Slack**: `recipient.slack` — pelo menos um de: `userId`, `channelId`, `channelName`, `email`.
-- **SMS**: `recipient.sms.phoneNumber` (E.164, ex.: `+5511999999999`).
+- **Slack**: `recipient.slack` — at least one of: `userId`, `channelId`, `channelName`, `email`.
+- **SMS**: `recipient.sms.phoneNumber` (E.164, e.g. `+5511999999999`).
 - **WhatsApp**: `recipient.whatsapp.phoneNumber` (E.164).
-- **Telegram**: `recipient.telegram.chatId` (string ou número); `username` opcional.
-- **Push (mobile)**: `recipient.push` — ou `endpointArn` ou `deviceToken` + `platform` (`APNS`, `APNS_SANDBOX`, `GCM`).
-- **Web Push**: `recipient.web` — `endpoint` (URL), `keys.p256dh`, `keys.auth`; `expirationTime` opcional.
+- **Telegram**: `recipient.telegram.chatId` (string or number); `username` optional.
+- **Push (mobile)**: `recipient.push` — either `endpointArn` or `deviceToken` + `platform` (`APNS`, `APNS_SANDBOX`, `GCM`).
+- **Web Push**: `recipient.web` — `endpoint` (URL), `keys.p256dh`, `keys.auth`; `expirationTime` optional.
 
 **Payload**
 
 ```json
 {
-  "title": "string (opcional)",
-  "text": "string (obrigatório)",
-  "html": "string (opcional)"
+  "title": "string (optional)",
+  "text": "string (required)",
+  "html": "string (optional)"
 }
 ```
 
-**Overrides por canal** (todos opcionais)
+**Channel overrides** (all optional)
 
 - **email**: `subject`, `provider` (`resend` \| `ses` \| `mock`).
 - **slack**: `blocks` (array).
-- **sms**: `provider` (`sns` \| `twilio`), `messageType` (`Transactional` \| `Promotional`), `senderId` (max 11 caracteres).
+- **sms**: `provider` (`sns` \| `twilio`), `messageType` (`Transactional` \| `Promotional`), `senderId` (max 11 characters).
 - **whatsapp**: `contentSid`, `contentVariables`, `mediaUrl`.
 - **push**: `badge`, `sound`, `data`, `ttl`.
 - **web**: `icon`, `badge`, `image`, `tag`, `renotify`, `requireInteraction`, `vibrate`, `actions`, `data`, `ttl`, `urgency` (`very-low` \| `low` \| `normal` \| `high`).
 - **telegram**: `parseMode` (`HTML` \| `MarkdownV2`), `disableNotification`, `replyToMessageId`.
 
-**Resposta de sucesso**: `201 Created`
+**Success response**: `201 Created`
 
 ```json
 {
   "messageId": "string (CUID2)",
-  "status": "string (ex.: pending)",
+  "status": "string (e.g. pending)",
   "channels": ["string"]
 }
 ```
 
-**Erros**
+**Errors**
 
-- `400`: body inválido — `error: "Validation Error"`, `message: "Invalid envelope format"`, `details` com erros Zod.
-- `401`: não autenticado ou projeto não identificado.
-- `429`: rate limit (ver seção Rate limiting).
-- `500`: erro interno — `error: "Internal Server Error"`, `message: "Failed to create message"`.
+- `400`: invalid body — `error: "Validation Error"`, `message: "Invalid envelope format"`, `details` with Zod errors.
+- `401`: not authenticated or project not identified.
+- `429`: rate limit exceeded (see Rate limiting).
+- `500`: internal error — `error: "Internal Server Error"`, `message: "Failed to create message"`.
 
-**Idempotência**: O par `(projectId, idempotencyKey)` é único. Reenvios com a mesma chave retornam o mesmo `messageId` e status do registro já existente (201 com dados do registro existente).
+**Idempotency**: The pair `(projectId, idempotencyKey)` is unique. Resubmitting with the same key returns the same `messageId` and status of the existing record (201 with existing record data).
 
 ---
 
 ### GET /v1/messages/:id
 
-Retorna uma mensagem e seus eventos (status e histórico).
+Returns a message and its events (status and history).
 
 **Headers**
 
-| Header          | Obrigatório | Descrição             |
-|-----------------|-------------|------------------------|
-| `Authorization` | Sim         | `Bearer <API_KEY>`    |
+| Header          | Required | Description             |
+|-----------------|----------|-------------------------|
+| `Authorization` | Yes      | `Bearer <API_KEY>`      |
 
-**Parâmetros de path**
+**Path parameters**
 
-| Nome | Tipo   | Descrição      |
-|------|--------|----------------|
-| `id` | string | ID da mensagem (CUID2). |
+| Name | Type   | Description      |
+|------|--------|------------------|
+| `id` | string | Message ID (CUID2). |
 
-**Resposta de sucesso**: `200 OK`
+**Success response**: `200 OK`
 
 ```json
 {
@@ -139,93 +139,93 @@ Retorna uma mensagem e seus eventos (status e histórico).
   "events": [
     {
       "id": "string",
-      "type": "string (ex.: message.accepted, message.queued, message.delivered)",
-      "channel": "string (opcional)",
-      "provider": "string (opcional)",
-      "payload": "object (opcional)",
+      "type": "string (e.g. message.accepted, message.queued, message.delivered)",
+      "channel": "string (optional)",
+      "provider": "string (optional)",
+      "payload": "object (optional)",
       "createdAt": "string ISO 8601"
     }
   ]
 }
 ```
 
-**Erros**
+**Errors**
 
-- `401`: não autenticado.
-- `404`: mensagem não encontrada ou de outro projeto — `error: "Not Found"`, `message: "Message not found"`.
-- `500`: erro interno.
+- `401`: not authenticated.
+- `404`: message not found or belongs to another project — `error: "Not Found"`, `message: "Message not found"`.
+- `500`: internal error.
 
 ---
 
 ### GET /health
 
-Health check (sem autenticação). Usado para readiness/liveness.
+Health check (no authentication). Used for readiness/liveness.
 
-**Resposta de sucesso**: `200` se saudável, `503` se degradado.
+**Success response**: `200` when healthy, `503` when degraded.
 
 ```json
 {
   "status": "ok | degraded",
   "timestamp": "string ISO 8601",
   "checks": {
-    "database": { "status": "ok | error", "latencyMs": number, "error": "string (opcional)" },
-    "redis": { "status": "ok | error", "latencyMs": number, "error": "string (opcional)" }
+    "database": { "status": "ok | error", "latencyMs": number, "error": "string (optional)" },
+    "redis": { "status": "ok | error", "latencyMs": number, "error": "string (optional)" }
   }
 }
 ```
 
 ## Rate limiting
 
-- Aplicado por `projectId` (requisições autenticadas) ou por IP (quando não autenticado).
-- Configurável no servidor (ex.: 100 requisições por minuto).
-- Headers de resposta: `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-reset`, `retry-after`.
-- Em excesso: `429 Too Many Requests`:
+- Applied by `projectId` (authenticated requests) or by IP (when not authenticated).
+- Configurable on the server (e.g. 100 requests per minute).
+- Response headers: `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-reset`, `retry-after`.
+- When exceeded: `429 Too Many Requests`:
   - `error: "Too Many Requests"`
-  - `message`: indica tempo para retry
-  - `retryAfter`: segundos
+  - `message`: indicates when to retry
+  - `retryAfter`: seconds
 
-O endpoint `/health` não é rate limited.
+The `/health` endpoint is not rate limited.
 
-## Canais suportados
+## Supported channels
 
-| Canal     | Valor no array `channels` |
-|-----------|----------------------------|
-| Email     | `email`                    |
-| Slack     | `slack`                    |
-| SMS       | `sms`                      |
-| WhatsApp  | `whatsapp`                 |
-| Telegram  | `telegram`                 |
-| Push (mobile) | `push`                 |
-| Web Push  | `web`                      |
+| Channel        | Value in `channels` array |
+|----------------|---------------------------|
+| Email          | `email`                   |
+| Slack          | `slack`                   |
+| SMS            | `sms`                     |
+| WhatsApp       | `whatsapp`                |
+| Telegram       | `telegram`                |
+| Push (mobile)  | `push`                    |
+| Web Push       | `web`                     |
 
-## Uso do SDK (opcional)
+## SDK usage (optional)
 
-Se o outro projeto for Node/TypeScript, pode usar o pacote `@maritaca/sdk`:
+For Node/TypeScript projects, you can use the `@maritaca/sdk` package:
 
 ```ts
 import { Maritaca } from '@maritaca/sdk'
 
 const client = new Maritaca({
   apiKey: process.env.MARITACA_API_KEY!,
-  baseUrl: 'https://sua-api-maritaca.example.com'
+  baseUrl: 'https://your-maritaca-api.example.com'
 })
 
-// Enviar mensagem
+// Send message
 const { messageId, status, channels } = await client.messages.send({
   idempotencyKey: 'uniq-key-123',
   channels: ['email'],
   sender: { name: 'App', email: 'noreply@example.com' },
   recipient: { email: 'user@example.com' },
-  payload: { title: 'Olá', text: 'Conteúdo em texto' }
+  payload: { title: 'Hello', text: 'Plain text content' }
 })
 
-// Consultar mensagem
+// Get message
 const message = await client.messages.get(messageId)
 ```
 
-Erros do SDK: `MaritacaAPIError` (respostas 4xx/5xx), `MaritacaNetworkError` (falha de rede), `MaritacaError` (base).
+SDK errors: `MaritacaAPIError` (4xx/5xx responses), `MaritacaNetworkError` (network failure), `MaritacaError` (base).
 
-## Exemplo mínimo (cURL)
+## Minimal example (cURL)
 
 ```bash
 curl -X POST "${MARITACA_BASE_URL}/v1/messages" \
@@ -236,10 +236,10 @@ curl -X POST "${MARITACA_BASE_URL}/v1/messages" \
     "channels": ["email"],
     "sender": { "name": "App", "email": "noreply@example.com" },
     "recipient": { "email": "user@example.com" },
-    "payload": { "text": "Mensagem mínima" }
+    "payload": { "text": "Minimal message" }
   }'
 ```
 
 ---
 
-*Especificações extraídas do repositório Maritaca (API Fastify, core validation e SDK).*
+*Specification derived from the Maritaca repository (Fastify API, core validation, and SDK).*
