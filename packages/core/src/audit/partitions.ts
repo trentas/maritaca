@@ -8,7 +8,26 @@ import type { DbClient } from '../db/client.js'
  * - Efficient data archival (drop old partitions)
  * - Parallel query execution
  * - Easier sharding across databases
+ *
+ * All partition operations no-op with a warning if audit_logs exists but is not
+ * partitioned (e.g. created by Drizzle from schema). Ensure 0004_create_audit_logs.sql
+ * has been applied so the table is created with PARTITION BY RANGE (created_at).
  */
+
+/**
+ * Returns true if the audit_logs table exists and is a partitioned table.
+ * If the table was created from Drizzle schema or an old migration, it may
+ * exist as a regular table; partition operations will fail in that case.
+ */
+export async function isAuditLogsPartitioned(db: DbClient): Promise<boolean> {
+  const result = await db.execute(sql.raw(`
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'audit_logs' AND c.relkind = 'p'
+  `))
+  const rows = Array.isArray(result) ? result : (result as any).rows ?? []
+  return rows.length > 0
+}
 
 /**
  * Generate partition name for a given date
@@ -47,6 +66,9 @@ function formatDate(date: Date): string {
  * @param date - Any date within the target month
  */
 export async function createPartition(db: DbClient, date: Date): Promise<void> {
+  if (!(await isAuditLogsPartitioned(db))) {
+    return
+  }
   const partitionName = getPartitionName(date)
   const rangeStart = formatDate(getMonthStart(date))
   const rangeEnd = formatDate(getNextMonthStart(date))
@@ -68,6 +90,9 @@ export async function ensurePartitions(
   db: DbClient,
   monthsAhead: number = 3,
 ): Promise<string[]> {
+  if (!(await isAuditLogsPartitioned(db))) {
+    return []
+  }
   const created: string[] = []
   const now = new Date()
 
@@ -110,6 +135,9 @@ export async function dropPartition(db: DbClient, date: Date): Promise<void> {
  * @param date - Any date within the target month
  */
 export async function detachPartition(db: DbClient, date: Date): Promise<void> {
+  if (!(await isAuditLogsPartitioned(db))) {
+    return
+  }
   const partitionName = getPartitionName(date)
   await db.execute(sql.raw(`
     ALTER TABLE audit_logs DETACH PARTITION ${partitionName}
@@ -127,6 +155,9 @@ export async function dropOldPartitions(
   db: DbClient,
   retentionMonths: number = 12,
 ): Promise<string[]> {
+  if (!(await isAuditLogsPartitioned(db))) {
+    return []
+  }
   const dropped: string[] = []
   const cutoffDate = new Date()
   cutoffDate.setMonth(cutoffDate.getMonth() - retentionMonths)
@@ -173,6 +204,9 @@ export async function getPartitionStats(db: DbClient): Promise<{
   totalRows: number
   totalSizeBytes: number
 }> {
+  if (!(await isAuditLogsPartitioned(db))) {
+    return { partitions: [], totalRows: 0, totalSizeBytes: 0 }
+  }
   const result = await db.execute(sql.raw(`
     SELECT 
       c.relname as name,

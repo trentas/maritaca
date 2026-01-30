@@ -67,7 +67,7 @@ export class SnsSmsProvider implements Provider {
   channel = 'sms' as const
   name = 'sns-sms'
   private logger: Logger
-  private client: SNSClient
+  private client: SNSClient | null
   private region: string
 
   constructor(options?: SnsSmsProviderOptions) {
@@ -77,11 +77,12 @@ export class SnsSmsProvider implements Provider {
     const accessKeyId = options?.accessKeyId ?? process.env.AWS_ACCESS_KEY_ID
     const secretAccessKey = options?.secretAccessKey ?? process.env.AWS_SECRET_ACCESS_KEY
 
-    if (!region) {
-      throw new Error('AWS_REGION is required for SnsSmsProvider')
-    }
+    this.region = region ?? ''
 
-    this.region = region
+    if (!region) {
+      this.client = null
+      return
+    }
 
     const clientConfig: { region: string; credentials?: { accessKeyId: string; secretAccessKey: string } } = {
       region,
@@ -95,6 +96,14 @@ export class SnsSmsProvider implements Provider {
     }
 
     this.client = new SNSClient(clientConfig)
+  }
+
+  private ensureConfigured(): void {
+    if (!this.client || !this.region) {
+      throw new Error(
+        'AWS_REGION is required for SnsSmsProvider. Set the AWS_REGION environment variable or use another SMS provider (e.g. SMS_PROVIDER=twilio).',
+      )
+    }
   }
 
   /**
@@ -154,10 +163,10 @@ export class SnsSmsProvider implements Provider {
    * Check if the provider is properly configured
    */
   async healthCheck(): Promise<HealthCheckResult> {
-    if (!this.region) {
+    if (!this.region || !this.client) {
       return {
         ok: false,
-        error: 'AWS_REGION is not configured',
+        error: 'AWS_REGION is not configured. Set AWS_REGION or use another SMS provider (e.g. SMS_PROVIDER=twilio).',
       }
     }
 
@@ -187,6 +196,7 @@ export class SnsSmsProvider implements Provider {
    * Send SMS via AWS SNS
    */
   async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
+    this.ensureConfigured()
     const startTime = Date.now()
 
     return tracer.startActiveSpan('sns-sms.send', async (span) => {

@@ -73,6 +73,7 @@ export {
   detachPartition,
   dropOldPartitions,
   getPartitionStats,
+  isAuditLogsPartitioned,
 } from './audit/index.js'
 
 export type {

@@ -1,6 +1,6 @@
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 import type { DbClient, Logger } from '@maritaca/core'
-import { ensurePartitions, dropOldPartitions, getPartitionStats } from '@maritaca/core'
+import { ensurePartitions, dropOldPartitions, getPartitionStats, isAuditLogsPartitioned } from '@maritaca/core'
 
 const tracer = trace.getTracer('maritaca-worker', '1.0')
 
@@ -56,6 +56,14 @@ export async function processMaintenanceJob(
     try {
       switch (type) {
         case 'partition-maintenance': {
+          if (!(await isAuditLogsPartitioned(db))) {
+            logger.warn(
+              'audit_logs is not partitioned; skipping partition maintenance. Apply 0004_create_audit_logs.sql so the table uses PARTITION BY RANGE (created_at).',
+            )
+            span.setStatus({ code: SpanStatusCode.OK })
+            span.end()
+            return { type, createdPartitions: [], droppedPartitions: [] }
+          }
           logger.info({ monthsAhead, retentionMonths }, 'Running partition maintenance')
 
           // Create future partitions
@@ -79,6 +87,17 @@ export async function processMaintenanceJob(
         }
 
         case 'partition-stats': {
+          if (!(await isAuditLogsPartitioned(db))) {
+            logger.warn(
+              'audit_logs is not partitioned; returning empty stats. Apply 0004_create_audit_logs.sql so the table uses PARTITION BY RANGE (created_at).',
+            )
+            span.setStatus({ code: SpanStatusCode.OK })
+            span.end()
+            return {
+              type,
+              stats: { partitions: [], totalRows: 0, totalSizeBytes: 0 },
+            }
+          }
           logger.info('Getting partition statistics')
 
           const stats = await getPartitionStats(db)

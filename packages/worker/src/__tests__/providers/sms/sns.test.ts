@@ -70,10 +70,37 @@ describe('SnsSmsProvider', () => {
       })
     })
 
-    it('should throw if no region is provided', () => {
+    it('should not throw in constructor when no region (fails on send/healthCheck)', () => {
       delete process.env.AWS_REGION
       delete process.env.AWS_DEFAULT_REGION
-      expect(() => new SnsSmsProvider()).toThrow('AWS_REGION is required')
+      const provider = new SnsSmsProvider()
+      expect(provider.channel).toBe('sms')
+      expect(SNSClient).not.toHaveBeenCalled()
+    })
+
+    it('should report healthCheck ok: false when no region', async () => {
+      delete process.env.AWS_REGION
+      delete process.env.AWS_DEFAULT_REGION
+      const provider = new SnsSmsProvider()
+      const health = await provider.healthCheck()
+      expect(health.ok).toBe(false)
+      expect(health.error).toContain('AWS_REGION')
+    })
+
+    it('should throw in send() when no region', async () => {
+      delete process.env.AWS_REGION
+      delete process.env.AWS_DEFAULT_REGION
+      const provider = new SnsSmsProvider()
+      const prepared = {
+        channel: 'sms' as const,
+        data: {
+          phoneNumbers: ['+5511999999999'],
+          message: 'test',
+          messageType: 'Transactional' as const,
+          senderId: undefined,
+        },
+      }
+      await expect(provider.send(prepared)).rejects.toThrow('AWS_REGION is required')
     })
 
     it('should use AWS_DEFAULT_REGION as fallback', () => {

@@ -17,12 +17,18 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "typecheck": "turbo run typecheck",
     "create-api-key": "dotenv -e .env -- tsx scripts/create-api-key.ts",
+    "trigger-maintenance": "dotenv -e .env -- tsx scripts/trigger-maintenance.ts",
+    "run-maintenance": "dotenv -e .env -- tsx scripts/run-maintenance.ts",
     "test:otlp": "dotenv -e .env -- tsx scripts/test-otlp.ts",
     "db:push": "pnpm --filter @maritaca/core db:push",
     "db:migrate": "pnpm --filter @maritaca/core db:migrate",
     "db:generate": "pnpm --filter @maritaca/core db:generate"
   },
   "devDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
+    "@opentelemetry/resources": "^1.28.0",
+    "@opentelemetry/sdk-node": "^0.57.0",
     "@types/node": "^22.0.0",
     "turbo": "^2.0.0",
     "typescript": "^5.6.0",

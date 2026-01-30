@@ -16,4 +16,5 @@ export {
   detachPartition,
   dropOldPartitions,
   getPartitionStats,
+  isAuditLogsPartitioned,
 } from './partitions.js'
