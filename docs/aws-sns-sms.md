@@ -116,11 +116,55 @@ Use the same region in Maritaca’s `AWS_REGION` (see below).
 
 ### 1.4. AWS account and SNS SMS settings
 
-- Ensure **SNS SMS** is enabled for your account and that you have completed any required **account and destination country** settings in the SNS console (e.g. **Text messaging (SMS)** → **Sandbox** or **Production**).
-- For production, configure **Spending limits** and **Default message type** (Transactional / Promotional) in **SNS** → **Text messaging (SMS)** → **Settings**.
-- If you use the **SMS sandbox**, add and verify destination phone numbers in the sandbox before testing.
+SMS is available in SNS by default in [regions that support SMS](https://docs.aws.amazon.com/general/latest/gr/end-user-messaging.html). There is no separate “activate SMS” switch; you configure preferences and, if your account is in the SMS sandbox, request production access to send to any number (see [1.5](#15-leaving-the-sms-sandbox-sending-to-any-number)).
 
-See [AWS SNS SMS documentation](https://docs.aws.amazon.com/sns/latest/dg/sms_publish-to-phone.html) for details.
+**Where to configure SMS in the console**
+
+1. Sign in to the [Amazon SNS console](https://console.aws.amazon.com/sns/home).
+2. Select a **region** that supports SMS (e.g. `us-east-1`).
+3. In the left navigation, go to **Mobile** → **Text messaging (SMS)** (or **Text messaging (SMS)** directly, depending on the console layout).
+4. On the **Mobile text messaging (SMS)** page, find the **Text messaging preferences** section and choose **Edit**.
+5. On **Edit text messaging preferences**, set:
+   - **Default message type**: `Transactional` (higher reliability) or `Promotional` (lower cost).
+   - **Account spend limit** (optional): monthly SMS spend limit in USD (default is often 1.00 USD; you can [request a quota increase](https://console.aws.amazon.com/support/home#/case/create?issueType=service-limit-increase&limitType=service-code-sns) if needed).
+   - **Default sender ID** (optional): brand or identifier shown as sender (support varies by country).
+6. Choose **Save changes**.
+
+If your account is in the **SMS sandbox**, you can only send to verified destination phone numbers. Add and verify them in the **Sandbox destination phone numbers** section on the same **Text messaging (SMS)** page before testing. To send to any number, you must leave the sandbox (see next section).
+
+See [AWS SNS SMS documentation](https://docs.aws.amazon.com/sns/latest/dg/sms_publish-to-phone.html) and [Setting SMS messaging preferences](https://docs.aws.amazon.com/sns/latest/dg/sms_preferences.html) for details.
+
+### 1.5. Leaving the SMS sandbox (sending to any number)
+
+New AWS SNS SMS accounts start in the **SMS sandbox**. In the sandbox you can only send SMS to **verified destination phone numbers** (up to 10). To send to **any phone number**, you must request **production access** so your account can leave the sandbox.
+
+**Option A – From the SNS console**
+
+1. In the [Amazon SNS console](https://console.aws.amazon.com/sns/home), select a region that supports SMS.
+2. Go to **Text messaging (SMS)** (under **Mobile** or in the left navigation).
+3. On the **Text messaging (SMS)** page, look for a section related to **Sandbox** (e.g. “SMS sandbox”, “Sandbox destination phone numbers”, or “Account status”).
+4. Use the **Request production access** (or similar) link or button, if available in your region/console version.
+5. Fill in the form (use case, expected volume, destination countries) and submit. AWS will review and, if approved, your account will be able to send SMS to any recipient (subject to country-specific rules).
+
+**Option B – Via AWS Support (service limit increase)**
+
+If you do not see a “Request production access” option in the console:
+
+1. Open [AWS Support Center](https://console.aws.amazon.com/support/home) → **Create case**.
+2. Choose **Service limit increase**.
+3. For **Limit type**, select **SNS** (or **SNS Text Messaging** / **SMS**, if listed).
+4. In the request, state that you need **SMS production access** (leave the SMS sandbox) to send SMS to any phone number.
+5. Provide use case (e.g. transactional notifications, 2FA, alerts), expected volume, and destination countries.
+6. Submit the case and wait for AWS to respond (often a few business days).
+
+**Country-specific requirements**
+
+Some countries require additional steps before or after production access:
+
+- **Company registration**: You may need to register your company with AWS End User Messaging (e.g. for certain sender IDs or origination numbers). See [Supported countries and regions for SMS](https://docs.aws.amazon.com/sms-voice/latest/userguide/phone-numbers-sms-by-country.html) in the *AWS End User Messaging SMS User Guide*.
+- **Origination identity**: For some regions (e.g. US), you may need a dedicated origination number (10DLC, toll-free, etc.) or sender ID. See [Origination identities for Amazon SNS SMS messages](https://docs.aws.amazon.com/sns/latest/dg/channels-sms-originating-identities.html).
+
+For more on the sandbox and first steps, see [Using the Amazon SNS SMS sandbox](https://docs.aws.amazon.com/sns/latest/dg/sns-sms-sandbox.html).
 
 ---
 
@@ -214,7 +258,7 @@ and configure the Twilio provider as per your project docs. The API payload (rec
 
 | Side | What to do |
 |------|------------|
-| **AWS** | Create an IAM policy with `sns:Publish` (and optionally `sns:GetSMSAttributes`). Attach it to an IAM user and create access keys. |
+| **AWS** | Create an IAM policy with `sns:Publish` (and optionally `sns:GetSMSAttributes`). Attach it to an IAM user and create access keys. Configure SMS preferences in **SNS** → **Text messaging (SMS)** → **Text messaging preferences** → **Edit**. To send to any number, request production access to leave the SMS sandbox (console or AWS Support). |
 | **Maritaca** | Set `AWS_REGION` and, if not using an IAM role, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Optionally set `SMS_PROVIDER=sns`. Send SMS via the API with `channels: ["sms"]` and `recipient.sms.phoneNumber` in E.164. |
 
 ---
@@ -223,4 +267,9 @@ and configure the Twilio provider as per your project docs. The API payload (rec
 
 - [AWS SNS – Publishing to a phone number (SMS)](https://docs.aws.amazon.com/sns/latest/dg/sms_publish-to-phone.html)
 - [AWS SNS SMS attributes](https://docs.aws.amazon.com/sns/latest/dg/sms_attributes.html)
+- [Setting SMS messaging preferences in Amazon SNS](https://docs.aws.amazon.com/sns/latest/dg/sms_preferences.html)
+- [Using the Amazon SNS SMS sandbox](https://docs.aws.amazon.com/sns/latest/dg/sns-sms-sandbox.html)
+- [Adding and verifying phone numbers in the SMS sandbox](https://docs.aws.amazon.com/sns/latest/dg/sns-sms-sandbox-verifying-phone-numbers.html)
+- [Origination identities for Amazon SNS SMS messages](https://docs.aws.amazon.com/sns/latest/dg/channels-sms-originating-identities.html)
+- [Supported countries and regions for SMS (AWS End User Messaging)](https://docs.aws.amazon.com/sms-voice/latest/userguide/phone-numbers-sms-by-country.html)
 - [Maritaca API spec](./MARITACA_API_SPEC.md) – message format and channels
