@@ -141,7 +141,9 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
       )
       if (resendAttempt?.externalId) {
         const apiKey = process.env.RESEND_API_KEY
-        const lastEvent = await fetchResendLastEvent(resendAttempt.externalId, apiKey)
+        const lastEvent = await fetchResendLastEvent(resendAttempt.externalId, apiKey, {
+          logger: request.log,
+        })
         if (lastEvent) {
           await db
             .update(attempts)

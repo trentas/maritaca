@@ -3,13 +3,20 @@ import type { Envelope } from '@maritaca/core'
 
 // Mock the AWS SNS client before importing
 vi.mock('@aws-sdk/client-sns', () => {
+  const SNSClient = vi.fn().mockImplementation(() => ({
+    send: vi.fn(),
+  }))
+  const PublishCommand = vi.fn().mockImplementation((input) => ({ input }))
+  const CreatePlatformEndpointCommand = vi.fn().mockImplementation((input) => ({ input }))
+  const ListPlatformApplicationsCommand = vi.fn().mockImplementation((input) => ({ input }))
+  
   return {
-    SNSClient: vi.fn().mockImplementation(() => ({
-      send: vi.fn(),
-    })),
-    PublishCommand: vi.fn().mockImplementation((input) => ({ input })),
-    CreatePlatformEndpointCommand: vi.fn().mockImplementation((input) => ({ input })),
-    ListPlatformApplicationsCommand: vi.fn().mockImplementation((input) => ({ input })),
+    SNSClient,
+    PublishCommand,
+    CreatePlatformEndpointCommand,
+    ListPlatformApplicationsCommand,
+    // Provider imports as default: import snsSdk from '@aws-sdk/client-sns'
+    default: { SNSClient, PublishCommand, CreatePlatformEndpointCommand, ListPlatformApplicationsCommand },
   }
 })
 

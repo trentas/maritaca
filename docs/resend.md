@@ -93,6 +93,8 @@ RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 RESEND_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
+> **Security Warning:** Never commit API keys or secrets to version control. Use environment variables, secret managers (e.g., AWS Secrets Manager, Vault), or `.env` files that are excluded from git (via `.gitignore`).
+
 ### 2.2. Sending email via the API
 
 Send a notification with email by including the `email` channel, a **sender** with an **email** (from a verified Resend domain), and a **recipient** with an **email**.
@@ -114,13 +116,16 @@ curl -X POST http://localhost:7377/v1/messages \
   }'
 ```
 
+> **Note:** The example uses `localhost:7377`; adjust the host and port to match your deployment (e.g., `https://api.yourdomain.com` in production).
+
 **Requirements:**
 
 - **`sender.email`** – Required for Resend. Use an address on a domain you verified in Resend (e.g. `noreply@yourdomain.com`).
 - **`recipient.email`** – One or more recipient email addresses.
 - **`channels`** – Include `"email"` so the worker uses the email provider (Resend when `EMAIL_PROVIDER=resend`).
+- **`payload.text` or `payload.html`** – At least one is required. The email body can be plain text, HTML, or both. If both are provided, email clients will display HTML when supported and fall back to text.
 
-**Email-specific overrides** (optional) – see [Maritaca API spec](./MARITACA_API_SPEC.md) for full payload shape. The Resend provider uses `payload.title` and `payload.text`; HTML can be supported depending on provider implementation.
+**Email-specific overrides** (optional) – see [Maritaca API spec](./MARITACA_API_SPEC.md) for full payload shape. The Resend provider uses `payload.title` (as subject) and `payload.text`/`payload.html` for the email body.
 
 ### 2.3. Webhook endpoint
 
@@ -145,6 +150,34 @@ Configure this URL in the Resend dashboard as the webhook endpoint (see 1.3). Th
 |-----------|------------|
 | **Resend**| Create an API key (Sending access). Add and verify your domain (DNS). Optionally create a webhook to `https://your-api/webhooks/resend` and copy the signing secret. |
 | **Maritaca** | Set `EMAIL_PROVIDER=resend` and `RESEND_API_KEY` in the worker. Set `RESEND_WEBHOOK_SECRET` in the API if you use webhooks. Send email via the API with `channels: ["email"]`, `sender.email` (verified domain), and `recipient.email`. |
+
+---
+
+## Troubleshooting
+
+### "Sender email is required for Resend provider"
+
+Ensure your request includes `sender.email` with an address from a verified Resend domain.
+
+### "Email must have at least text or html content"
+
+The `payload` must include either `text`, `html`, or both. Empty email bodies are not allowed.
+
+### Webhook returns 503 "Webhook not configured"
+
+Set the `RESEND_WEBHOOK_SECRET` environment variable in the API. Get the signing secret from the Resend Dashboard under Webhooks.
+
+### Webhook returns 400 "Invalid signature"
+
+- Verify that `RESEND_WEBHOOK_SECRET` matches the signing secret from your Resend webhook.
+- Ensure the webhook URL in Resend points exactly to your API endpoint (e.g., `https://api.example.com/webhooks/resend`).
+- Check that no proxy or load balancer is modifying the request body (the signature is sensitive to any change).
+
+### Email not delivered / status not updating
+
+- Check that webhooks are configured in Resend and pointing to the correct URL.
+- Verify the API has network access to receive incoming webhook requests.
+- If webhooks are not configured, Maritaca will attempt to fetch status on-demand when you retrieve the message via `GET /v1/messages/:id`.
 
 ---
 

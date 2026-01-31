@@ -34,7 +34,7 @@ export interface ResendProviderOptions {
 export interface HealthCheckResult {
   ok: boolean
   error?: string
-  details?: Record<string, any>
+  details?: Record<string, unknown>
 }
 
 const tracer = trace.getTracer('maritaca-resend-provider')
@@ -102,12 +102,17 @@ export class ResendProvider implements Provider {
 
   /**
    * Prepare envelope for Resend API
-   * @throws {Error} If no valid recipients or missing sender email
+   * @throws {Error} If no valid recipients, missing sender email, or no content
    */
   prepare(envelope: Envelope): PreparedMessage {
     // Defensive validation - ensure sender email exists
     if (!envelope.sender.email) {
       throw new Error('Sender email is required for Resend provider')
+    }
+
+    // Resend requires at least text or html content
+    if (!envelope.payload.text && !envelope.payload.html) {
+      throw new Error('Email must have at least text or html content')
     }
 
     const recipients = Array.isArray(envelope.recipient)
@@ -150,13 +155,6 @@ export class ResendProvider implements Provider {
    * Check if the provider is properly configured and can connect to Resend
    */
   async healthCheck(): Promise<HealthCheckResult> {
-    if (!this.apiKey) {
-      return {
-        ok: false,
-        error: 'RESEND_API_KEY is not configured',
-      }
-    }
-
     try {
       // Resend doesn't have a dedicated health check endpoint,
       // so we try to list domains (requires valid API key)
@@ -176,10 +174,11 @@ export class ResendProvider implements Provider {
           domainCount: response.data?.data?.length ?? 0,
         },
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to connect to Resend'
       return {
         ok: false,
-        error: error.message || 'Failed to connect to Resend',
+        error: message,
       }
     }
   }
@@ -228,7 +227,8 @@ export class ResendProvider implements Provider {
             {
               provider: 'resend',
               messageId,
-              error: response.error,
+              errorCode: response.error.name,
+              errorMessage: response.error.message,
             },
             '📧 [RESEND] Failed to send email',
           )
@@ -242,7 +242,7 @@ export class ResendProvider implements Provider {
           recordProviderError('resend', errorCode)
           recordProcessingDuration('email', 'resend', Date.now() - startTime)
           // Track rate limits
-          if (errorCode === 'rate_limit_exceeded' || response.error.name === 'rate_limit_exceeded') {
+          if (errorCode === 'rate_limit_exceeded') {
             recordRateLimit('resend')
           }
 
@@ -282,19 +282,21 @@ export class ResendProvider implements Provider {
           },
           externalId: response.data?.id,
         }
-      } catch (error) {
-        const err = error as Error
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         this.logger.error(
           {
             provider: 'resend',
             messageId,
-            error: err.message,
+            error: errorMessage,
           },
           '📧 [RESEND] Failed to send email',
         )
 
-        span.setStatus({ code: SpanStatusCode.ERROR, message: err.message })
-        span.recordException(err)
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMessage })
+        if (error instanceof Error) {
+          span.recordException(error)
+        }
         span.end()
 
         // Record metrics for the failed send
@@ -306,7 +308,7 @@ export class ResendProvider implements Provider {
           success: false,
           error: {
             code: 'RESEND_EXCEPTION',
-            message: err.message,
+            message: errorMessage,
           },
         }
       }

@@ -1,4 +1,4 @@
-import { FastifyPluginAsync } from 'fastify'
+import { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { eq } from 'drizzle-orm'
 import { Webhook } from 'svix'
 import { attempts } from '@maritaca/core'
@@ -9,31 +9,34 @@ function resendTypeToLastEvent(type: string): string | null {
   return type.slice('email.'.length)
 }
 
+/** Extend request to include rawBody for Svix verification */
+interface ResendWebhookRequest extends FastifyRequest {
+  rawBody?: string
+}
+
 export const resendWebhookRoutes: FastifyPluginAsync = async (fastify) => {
   const secret = process.env.RESEND_WEBHOOK_SECRET
   if (!secret) {
     fastify.log.warn('RESEND_WEBHOOK_SECRET is not set; Resend webhook will reject all requests')
   }
 
-  // Capture raw body for Svix verification (signature is sensitive to any change)
-  fastify.addContentTypeParser(
-    'application/json',
-    { parseAs: 'buffer' },
-    (req, body, done) => {
-      const raw = body.toString('utf8')
-      ;(req as { rawBody?: string }).rawBody = raw
-      try {
-        done(null, JSON.parse(raw))
-      } catch (e) {
-        done(e as Error, undefined)
-      }
-    },
-  )
-
   fastify.post<{
     Body: { type?: string; data?: { email_id?: string } }
-  }>('/webhooks/resend', async (request, reply) => {
-    const rawBody = (request as { rawBody?: string }).rawBody
+  }>('/webhooks/resend', {
+    // Capture raw body for Svix signature verification (route-specific, does not affect other routes)
+    preParsing: async (request: ResendWebhookRequest, _reply, payload) => {
+      const chunks: Buffer[] = []
+      for await (const chunk of payload) {
+        chunks.push(chunk as Buffer)
+      }
+      const rawBody = Buffer.concat(chunks).toString('utf8')
+      request.rawBody = rawBody
+      // Return a new stream with the same content for Fastify to parse
+      const { Readable } = await import('stream')
+      return Readable.from([rawBody])
+    },
+  }, async (request, reply) => {
+    const rawBody = (request as ResendWebhookRequest).rawBody
     if (!rawBody) {
       request.log.warn('Resend webhook: missing raw body')
       return reply.code(400).send({ error: 'Missing body' })
