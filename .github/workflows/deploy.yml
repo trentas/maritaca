@@ -156,6 +156,15 @@ jobs:
           source: ".env.production"
           target: "${{ vars.DEPLOY_PATH }}/.env"
 
+      - name: Copy docker-compose.prod.yml to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.SSH_HOST }}
+          username: ${{ vars.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "docker-compose.prod.yml"
+          target: "${{ vars.DEPLOY_PATH }}/docker-compose.prod.yml"
+
       - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.0.3
         env:
