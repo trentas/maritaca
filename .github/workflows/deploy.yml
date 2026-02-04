@@ -147,14 +147,27 @@ jobs:
             fi
           done
 
+      # scp-action "target" is a directory; files keep their names. Use DEPLOY_PATH only.
+      - name: Prepare deploy path on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.SSH_HOST }}
+          username: ${{ vars.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            rm -rf "${{ vars.DEPLOY_PATH }}/docker-compose.prod.yml" "${{ vars.DEPLOY_PATH }}/.env"
+            mkdir -p "${{ vars.DEPLOY_PATH }}"
+
       - name: Copy .env to VPS
+        run: cp .env.production .env
+      - name: SCP .env to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ vars.SSH_HOST }}
           username: ${{ vars.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: ".env.production"
-          target: "${{ vars.DEPLOY_PATH }}/.env"
+          source: ".env"
+          target: "${{ vars.DEPLOY_PATH }}"
 
       - name: Copy docker-compose.prod.yml to VPS
         uses: appleboy/scp-action@v0.1.7
@@ -163,7 +176,7 @@ jobs:
           username: ${{ vars.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "docker-compose.prod.yml"
-          target: "${{ vars.DEPLOY_PATH }}/docker-compose.prod.yml"
+          target: "${{ vars.DEPLOY_PATH }}"
 
       - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.0.3
