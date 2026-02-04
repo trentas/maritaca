@@ -70,8 +70,16 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   const db = createDbClient(options.databaseUrl)
   server.decorate('db', db)
 
-  // Create queue client
-  const queue = createQueue(options.redisUrl)
+  // Create queue Redis client (shared so we can attach error handler and use in health check with timeout)
+  const queueRedis = new Redis(options.redisUrl, {
+    connectTimeout: 10000,
+    maxRetriesPerRequest: 3,
+  })
+  queueRedis.on('error', (err) => logger.warn({ err }, 'Queue Redis connection error'))
+  server.decorate('queueRedis', queueRedis)
+
+  // Create queue client using shared connection
+  const queue = createQueue(options.redisUrl, queueRedis)
   server.decorate('queue', queue)
 
   // Decorate request with projectId so it propagates in encapsulated contexts (e.g. prefix /v1)
@@ -88,6 +96,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     connectTimeout: 10000,
     maxRetriesPerRequest: 3,
   })
+  rateLimitRedis.on('error', (err) => logger.warn({ err }, 'Rate limit Redis connection error'))
   server.decorate('rateLimitRedis', rateLimitRedis)
 
   await server.register(fastifyRateLimit, {
@@ -161,20 +170,22 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       recordHealthLatency('database', dbLatency)
     }
 
-    // Check Redis via BullMQ queue client
+    // Check Redis via shared queue client (with timeout so health responds when Redis is down)
     const redisStart = Date.now()
+    const REDIS_HEALTH_TIMEOUT_MS = 5000
     try {
-      const client = await queue.client
-      await client.ping()
+      const pingPromise = queueRedis.ping()
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Redis check timeout')), REDIS_HEALTH_TIMEOUT_MS),
+      )
+      await Promise.race([pingPromise, timeoutPromise])
       const redisLatency = Date.now() - redisStart
       checks.redis = { status: 'ok', latencyMs: redisLatency }
-      // Record Redis health latency metric
       recordHealthLatency('redis', redisLatency)
     } catch (err: any) {
       healthy = false
       const redisLatency = Date.now() - redisStart
       checks.redis = { status: 'error', latencyMs: redisLatency, error: err.message }
-      // Record Redis health latency metric even on error
       recordHealthLatency('redis', redisLatency)
     }
 
@@ -197,6 +208,7 @@ declare module 'fastify' {
   interface FastifyInstance {
     db: DbClient
     queue: ReturnType<typeof createQueue>
+    queueRedis: Redis
     rateLimitRedis: Redis
   }
 }
@@ -217,6 +229,9 @@ export async function startServer(options: ServerOptions): Promise<void> {
       
       // Close queue client (Redis connection)
       await server.queue.close()
+      
+      // Close queue Redis (shared connection)
+      await server.queueRedis.quit()
       
       // Close rate limit Redis client
       await server.rateLimitRedis.quit()

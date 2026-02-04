@@ -1,3 +1,4 @@
+import type Redis from 'ioredis'
 import { Queue, JobsOptions } from 'bullmq'
 import { parseRedisUrl, type Envelope } from '@maritaca/core'
 
@@ -8,14 +9,12 @@ export interface QueueJobData {
 }
 
 /**
- * Create BullMQ queue client
+ * Create BullMQ queue client.
+ * If connection is provided (e.g. shared Redis with error handler), it is used; otherwise connection is built from redisUrl.
  */
-export function createQueue(redisUrl: string): Queue<QueueJobData> {
-  const connection = parseRedisUrl(redisUrl)
-
-  return new Queue<QueueJobData>('maritaca-notifications', {
-    connection,
-  })
+export function createQueue(redisUrl: string, connection?: Redis): Queue<QueueJobData> {
+  const opts = connection ? { connection } : { connection: parseRedisUrl(redisUrl) }
+  return new Queue<QueueJobData>('maritaca-notifications', opts)
 }
 
 /**
