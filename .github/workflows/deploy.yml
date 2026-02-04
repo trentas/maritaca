@@ -1,0 +1,177 @@
+# Deploy Maritaca to production VPS via SSH.
+# Builds API and Worker images, pushes to GHCR, then deploys using GitHub Environment (production).
+# Production .env is generated from the same environment's variables and secrets.
+
+name: Deploy to production
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - 'CODE_OF_CONDUCT.md'
+      - 'CONTRIBUTING.md'
+      - 'assets/**'
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for API
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-api
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.api
+          push: true
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for Worker
+        id: meta-worker
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-worker
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+
+      - name: Build and push Worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.worker
+          push: true
+          tags: ${{ steps.meta-worker.outputs.tags }}
+          labels: ${{ steps.meta-worker.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      REGISTRY: ghcr.io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate production .env
+        env:
+          # App env vars (from GitHub Environment variables)
+          PORT: ${{ vars.PORT }}
+          HOST: ${{ vars.HOST }}
+          LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+          NODE_ENV: ${{ vars.NODE_ENV }}
+          RATE_LIMIT_MAX: ${{ vars.RATE_LIMIT_MAX }}
+          RATE_LIMIT_WINDOW_MS: ${{ vars.RATE_LIMIT_WINDOW_MS }}
+          OTEL_SERVICE_NAME: ${{ vars.OTEL_SERVICE_NAME }}
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT }}
+          OTEL_EXPORTER_OTLP_INSECURE: ${{ vars.OTEL_EXPORTER_OTLP_INSECURE }}
+          OTEL_TRACES_SAMPLER: ${{ vars.OTEL_TRACES_SAMPLER }}
+          OTEL_TRACES_SAMPLER_ARG: ${{ vars.OTEL_TRACES_SAMPLER_ARG }}
+          EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+          SMS_PROVIDER: ${{ vars.SMS_PROVIDER }}
+          PUSH_PROVIDER: ${{ vars.PUSH_PROVIDER }}
+          SNS_APNS_PLATFORM_ARN: ${{ vars.SNS_APNS_PLATFORM_ARN }}
+          SNS_APNS_SANDBOX_PLATFORM_ARN: ${{ vars.SNS_APNS_SANDBOX_PLATFORM_ARN }}
+          SNS_GCM_PLATFORM_ARN: ${{ vars.SNS_GCM_PLATFORM_ARN }}
+          WEB_PROVIDER: ${{ vars.WEB_PROVIDER }}
+          VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
+          VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT }}
+          TWILIO_SMS_FROM: ${{ vars.TWILIO_SMS_FROM }}
+          TWILIO_WHATSAPP_FROM: ${{ vars.TWILIO_WHATSAPP_FROM }}
+          AUDIT_HASH_SUBJECT_IDS: ${{ vars.AUDIT_HASH_SUBJECT_IDS }}
+          AUDIT_RETENTION_MONTHS: ${{ vars.AUDIT_RETENTION_MONTHS }}
+          AUDIT_PARTITION_MONTHS_AHEAD: ${{ vars.AUDIT_PARTITION_MONTHS_AHEAD }}
+          AUDIT_MAINTENANCE_CRON: ${{ vars.AUDIT_MAINTENANCE_CRON }}
+          # App secrets (from GitHub Environment secrets)
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          AUDIT_ENCRYPTION_KEY: ${{ secrets.AUDIT_ENCRYPTION_KEY }}
+        run: |
+          APP_KEYS="PORT HOST LOG_LEVEL NODE_ENV RATE_LIMIT_MAX RATE_LIMIT_WINDOW_MS OTEL_SERVICE_NAME OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_LOGS_ENDPOINT OTEL_EXPORTER_OTLP_INSECURE OTEL_TRACES_SAMPLER OTEL_TRACES_SAMPLER_ARG EMAIL_PROVIDER AWS_REGION AWS_DEFAULT_REGION SMS_PROVIDER PUSH_PROVIDER SNS_APNS_PLATFORM_ARN SNS_APNS_SANDBOX_PLATFORM_ARN SNS_GCM_PLATFORM_ARN WEB_PROVIDER VAPID_PUBLIC_KEY VAPID_SUBJECT TWILIO_SMS_FROM TWILIO_WHATSAPP_FROM AUDIT_HASH_SUBJECT_IDS AUDIT_RETENTION_MONTHS AUDIT_PARTITION_MONTHS_AHEAD AUDIT_MAINTENANCE_CRON DATABASE_URL REDIS_URL RESEND_API_KEY RESEND_WEBHOOK_SECRET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SLACK_BOT_TOKEN VAPID_PRIVATE_KEY TELEGRAM_BOT_TOKEN TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN AUDIT_ENCRYPTION_KEY"
+          rm -f .env.production
+          for key in $APP_KEYS; do
+            val="${!key}"
+            if [ -n "$val" ]; then
+              printf '%s=%s\n' "$key" "$val" >> .env.production
+            fi
+          done
+
+      - name: Copy .env to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.SSH_HOST }}
+          username: ${{ vars.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: ".env.production"
+          target: "${{ vars.DEPLOY_PATH }}/.env"
+
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          API_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-api:sha-${{ github.sha }}
+          WORKER_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-worker:sha-${{ github.sha }}
+        with:
+          host: ${{ vars.SSH_HOST }}
+          username: ${{ vars.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd "${{ vars.DEPLOY_PATH }}"
+            if [ -n "${{ secrets.GHCR_TOKEN }}" ]; then
+              echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            fi
+            export MARITACA_API_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/maritaca-api:sha-${{ github.sha }}"
+            export MARITACA_WORKER_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/maritaca-worker:sha-${{ github.sha }}"
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
