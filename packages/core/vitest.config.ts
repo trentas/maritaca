@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    pool: 'forks', // Avoid tinypool "Worker exited unexpectedly" with Node 25
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],

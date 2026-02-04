@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MessagesAPI } from '../../api/messages.js'
+import {
+  MaritacaAPIError,
+  MaritacaNetworkError,
+  MaritacaError,
+} from '../../errors.js'
 import type { Envelope } from '@maritaca/core'
 
 // Mock fetch
@@ -62,7 +67,36 @@ describe('Messages API', () => {
         payload: { text: 'Test' },
       }
 
-      await expect(api.send(envelope)).rejects.toThrow()
+      await expect(api.send(envelope)).rejects.toThrow(MaritacaAPIError)
+    })
+
+    it('should throw MaritacaNetworkError on fetch failure', async () => {
+      const fetchError = new TypeError('fetch failed')
+      vi.mocked(fetch).mockRejectedValueOnce(fetchError)
+
+      const envelope: Envelope = {
+        idempotencyKey: 'key',
+        sender: { name: 'Test' },
+        recipient: { email: 'test@example.com' },
+        channels: ['email'],
+        payload: { text: 'Test' },
+      }
+
+      await expect(api.send(envelope)).rejects.toThrow(MaritacaNetworkError)
+    })
+
+    it('should throw MaritacaError for unknown errors', async () => {
+      vi.mocked(fetch).mockRejectedValueOnce(new Error('Something went wrong'))
+
+      const envelope: Envelope = {
+        idempotencyKey: 'key',
+        sender: { name: 'Test' },
+        recipient: { email: 'test@example.com' },
+        channels: ['email'],
+        payload: { text: 'Test' },
+      }
+
+      await expect(api.send(envelope)).rejects.toThrow(MaritacaError)
     })
   })
 
@@ -90,14 +124,40 @@ describe('Messages API', () => {
       )
     })
 
-    it('should handle 404 errors', async () => {
+    it('should handle 404 errors with Message not found', async () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         status: 404,
         json: async () => ({ message: 'Not found' }),
       } as Response)
 
-      await expect(api.get('non-existent')).rejects.toThrow()
+      const err = await api.get('non-existent').catch((e) => e)
+      expect(err).toBeInstanceOf(MaritacaAPIError)
+      expect(err.statusCode).toBe(404)
+      expect(err.message).toBe('Message not found')
+    })
+
+    it('should handle non-404 API errors', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ message: 'Internal server error' }),
+      } as Response)
+
+      await expect(api.get('msg-123')).rejects.toThrow(MaritacaAPIError)
+    })
+
+    it('should throw MaritacaNetworkError on fetch failure', async () => {
+      const fetchError = new TypeError('fetch failed')
+      vi.mocked(fetch).mockRejectedValueOnce(fetchError)
+
+      await expect(api.get('msg-123')).rejects.toThrow(MaritacaNetworkError)
+    })
+
+    it('should throw MaritacaError for unknown errors', async () => {
+      vi.mocked(fetch).mockRejectedValueOnce(new Error('Unexpected error'))
+
+      await expect(api.get('msg-123')).rejects.toThrow(MaritacaError)
     })
   })
 })

@@ -17,6 +17,9 @@ export default defineConfig({
         '**/vitest.config.ts',
         '**/tsup.config.ts',
         '**/*.d.ts',
+        // Re-export and type-only files
+        '**/index.ts',
+        '**/types.ts',
       ],
       thresholds: {
         statements: 80,

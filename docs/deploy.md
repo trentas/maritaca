@@ -8,6 +8,7 @@ Este documento descreve o deploy do Maritaca em produção usando GitHub Actions
 - **Imagens:** publicadas em `ghcr.io/<owner>/<repo>/maritaca-api` e `maritaca-worker` (tags `latest` e `sha-<commit>`).
 - **VPS:** SSH com chave; no servidor são executados `docker compose -f docker-compose.prod.yml pull` e `up -d`.
 - **Redis:** não sobe no compose de produção; use o Redis já existente no VPS com **database separado** (ex.: `REDIS_URL=redis://host.docker.internal:6379/1`).
+- **Pacote GHCR público (recomendado):** se o pacote do GHCR estiver **público**, o VPS consegue fazer `docker pull` sem autenticação; não é necessário configurar `GHCR_TOKEN`. As imagens não contêm env/secrets (só o código); o `.env` é gerado no deploy e enviado separadamente.
 
 ## Pré-requisitos no VPS
 
@@ -28,7 +29,18 @@ Configure em **Settings → Environments → production** (ou o nome que for usa
 | Variable  | `SSH_USER`        | Sim         | Usuário SSH (ex.: `deploy`) |
 | Variable  | `DEPLOY_PATH`     | Sim         | Diretório do app no VPS (ex.: `/opt/maritaca`) |
 | Secret    | `SSH_PRIVATE_KEY` | Sim         | Conteúdo da chave privada SSH |
-| Secret    | `GHCR_TOKEN`      | Não         | PAT com `read:packages` para `docker login ghcr.io` no VPS (repositório privado) |
+| Secret    | `GHCR_TOKEN`      | Não         | Só se o pacote GHCR for **privado**. PAT com `read:packages` para `docker login ghcr.io` no VPS. Se o pacote for **público**, não configure (o pull funciona sem login). |
+
+### Deixar o pacote do GHCR público (recomendado)
+
+Para o VPS fazer `docker pull` sem `GHCR_TOKEN`:
+
+1. No repositório no GitHub: **Packages** (barra lateral direita ou **Code** → link do pacote ao lado de "Packages").
+2. Abra o pacote (ex.: **maritaca-api** ou **maritaca-worker**); se houver mais de um, repita para cada um.
+3. Em **Package settings** (menu à direita), em **Danger Zone**, use **Change visibility** → **Public**.
+4. Confirme. Faça o mesmo para **maritaca-worker** se existir como pacote separado.
+
+Depois disso, o deploy não precisa do secret `GHCR_TOKEN`.
 
 ### App – Environment variables (não sensíveis)
 
