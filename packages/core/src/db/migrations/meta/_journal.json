@@ -15,6 +15,41 @@
       "when": 1768910199170,
       "tag": "0001_medical_micromax",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1768910200000,
+      "tag": "0002_add_project_id_to_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1768910210000,
+      "tag": "0003_add_indexes_to_attempts_and_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1768910220000,
+      "tag": "0004_create_audit_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1768910230000,
+      "tag": "0005_attempts_external_id_provider_last_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1768910240000,
+      "tag": "0006_fix_audit_logs_partitioned",
+      "breakpoints": true
     }
   ]
 }

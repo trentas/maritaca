@@ -17,6 +17,8 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "typecheck": "turbo run typecheck",
     "create-api-key": "dotenv -e .env -- tsx scripts/create-api-key.ts",
+    "list-api-keys": "dotenv -e .env -- tsx scripts/list-api-keys.ts",
+    "remove-api-key": "dotenv -e .env -- tsx scripts/remove-api-key.ts",
     "trigger-maintenance": "dotenv -e .env -- tsx scripts/trigger-maintenance.ts",
     "run-maintenance": "dotenv -e .env -- tsx scripts/run-maintenance.ts",
     "test:otlp": "dotenv -e .env -- tsx scripts/test-otlp.ts",

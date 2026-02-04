@@ -1,0 +1,21 @@
+# Image to run Drizzle migrations in production.
+# Uses minimal config (no schema) so we only need migrations folder and drizzle-kit.
+
+FROM node:22-alpine
+
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/core/package.json packages/core/
+
+RUN pnpm install --frozen-lockfile
+
+COPY packages/core/drizzle.migrate.config.ts packages/core/
+COPY packages/core/src/db/migrations packages/core/src/db/migrations
+
+WORKDIR /app/packages/core
+
+# DATABASE_URL must be set by the runner (e.g. from .env or compose).
+CMD ["npx", "drizzle-kit", "migrate", "--config=drizzle.migrate.config.ts"]

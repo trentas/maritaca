@@ -5,8 +5,8 @@ Este documento descreve o deploy do Maritaca em produção usando GitHub Actions
 ## Visão geral
 
 - **Workflow:** [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) — disparo manual (`workflow_dispatch`) ou em `push` na branch `main`.
-- **Imagens:** publicadas em `ghcr.io/<owner>/<repo>/maritaca-api` e `maritaca-worker` (tags `latest` e `sha-<commit>`).
-- **VPS:** SSH com chave; no servidor são executados `docker compose -f docker-compose.prod.yml pull` e `up -d`.
+- **Imagens:** publicadas em `ghcr.io/<owner>/<repo>/maritaca-api`, `maritaca-worker` e `maritaca-migrate` (tags `latest` e `sha-<commit>`).
+- **VPS:** SSH com chave; no servidor são executados pull, `up -d postgres`, **migrações** (`docker compose run --rm migrate`) e depois `up -d` (api e worker).
 - **Redis:** não sobe no compose de produção; use o Redis já existente no VPS com **database separado** (ex.: `REDIS_URL=redis://host.docker.internal:6379/1`).
 - **Pacote GHCR público (recomendado):** se o pacote do GHCR estiver **público**, o VPS consegue fazer `docker pull` sem autenticação; não é necessário configurar `GHCR_TOKEN`. As imagens não contêm env/secrets (só o código); o `.env` é gerado no deploy e enviado separadamente.
 
@@ -36,9 +36,9 @@ Configure em **Settings → Environments → production** (ou o nome que for usa
 Para o VPS fazer `docker pull` sem `GHCR_TOKEN`:
 
 1. No repositório no GitHub: **Packages** (barra lateral direita ou **Code** → link do pacote ao lado de "Packages").
-2. Abra o pacote (ex.: **maritaca-api** ou **maritaca-worker**); se houver mais de um, repita para cada um.
+2. Abra cada pacote (**maritaca-api**, **maritaca-worker**, **maritaca-migrate**); repita para todos.
 3. Em **Package settings** (menu à direita), em **Danger Zone**, use **Change visibility** → **Public**.
-4. Confirme. Faça o mesmo para **maritaca-worker** se existir como pacote separado.
+4. Confirme para cada um.
 
 Depois disso, o deploy não precisa do secret `GHCR_TOKEN`.
 
@@ -102,26 +102,12 @@ Defina como **Environment secrets** no environment `production`. São escritas n
 1. Crie o environment `production` e configure todas as variáveis e secrets listados acima (pelo menos os obrigatórios e os que sua instalação usa).
 2. No VPS: instale Docker e Docker Compose; garanta que o Redis está rodando; clone o repositório em `DEPLOY_PATH` (ou coloque lá o `docker-compose.prod.yml`).
 3. Dispare o workflow manualmente (**Actions → Deploy to production → Run workflow**) ou faça push na `main`.
-4. **Migrações:** após o primeiro deploy, rode as migrações do banco **uma vez**. A imagem de produção não inclui `drizzle-kit`. Opções:
-   - No VPS, com o mesmo `DATABASE_URL` do `.env`, rode um container temporário com Node/pnpm e o código do repositório e execute `pnpm db:migrate`; ou
-   - Instale Node/pnpm no VPS, clone o repo, configure `DATABASE_URL` e rode `pnpm db:migrate` a partir do pacote `@maritaca/core`.
-
-Exemplo (no VPS, com rede do compose e `.env` no diretório atual):
+4. **Migrações:** são aplicadas **automaticamente** em cada deploy. O workflow sobe o Postgres, roda o container `migrate` (imagem `maritaca-migrate`) com `drizzle-kit migrate` e só então sobe a API e o Worker. Não é necessário rodar migrações manualmente após o deploy. Para rodar migrações manualmente no VPS (ex.: primeiro deploy antes de automatizar):
 
 ```bash
 cd "$DEPLOY_PATH"
-docker run --rm --env-file .env --network maritaca_default \
-  -e DATABASE_URL="postgresql://maritaca:maritaca@maritaca-postgres:5432/maritaca" \
-  node:22-alpine sh -c "apk add --no-cache git && ..."
-```
-
-Ou, se tiver Node localmente:
-
-```bash
-cd /path/to/maritaca
-export DATABASE_URL="postgresql://..."   # mesmo valor do .env de produção
-pnpm install
-pnpm db:migrate
+export MARITACA_MIGRATE_IMAGE=ghcr.io/<owner>/<repo>/maritaca-migrate:latest
+docker compose -f docker-compose.prod.yml run --rm migrate
 ```
 
 ## Rollback

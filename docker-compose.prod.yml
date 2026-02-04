@@ -3,8 +3,23 @@
 # Redis: attach to Sunshine network so REDIS_URL can use the Redis service name (e.g. redis://sunshine-redis:6379/1).
 # OTLP: attach to signoz-net so OTEL_EXPORTER_OTLP_* can reach Signoz collector.
 # We override the base compose so variables come from .env (environment block ensures .env wins over base defaults).
+# Migrations: run once per deploy with `docker compose run --rm migrate` (see deploy workflow).
 
 services:
+  migrate:
+    image: ${MARITACA_MIGRATE_IMAGE}
+    container_name: maritaca-migrate
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+    restart: "no"
+
   postgres:
     image: postgres:15-alpine
     container_name: maritaca-postgres

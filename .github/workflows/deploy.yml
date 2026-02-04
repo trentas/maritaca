@@ -82,6 +82,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Extract metadata for Migrate
+        id: meta-migrate
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-migrate
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=long
+
+      - name: Build and push Migrate image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.migrate
+          push: true
+          tags: ${{ steps.meta-migrate.outputs.tags }}
+          labels: ${{ steps.meta-migrate.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -183,6 +203,7 @@ jobs:
         env:
           API_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-api:sha-${{ github.sha }}
           WORKER_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-worker:sha-${{ github.sha }}
+          MIGRATE_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-migrate:sha-${{ github.sha }}
         with:
           host: ${{ vars.SSH_HOST }}
           username: ${{ vars.SSH_USER }}
@@ -196,5 +217,8 @@ jobs:
             fi
             export MARITACA_API_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/maritaca-api:sha-${{ github.sha }}"
             export MARITACA_WORKER_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/maritaca-worker:sha-${{ github.sha }}"
+            export MARITACA_MIGRATE_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/maritaca-migrate:sha-${{ github.sha }}"
             docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d postgres
+            docker compose -f docker-compose.prod.yml run --rm migrate
             docker compose -f docker-compose.prod.yml up -d
