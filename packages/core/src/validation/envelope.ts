@@ -139,6 +139,7 @@ export const channelOverridesSchema = z.object({
     .object({
       subject: z.string().optional(),
       provider: emailProviderSchema.optional(),
+      replyTo: z.string().email().optional(),
     })
     .optional(),
   slack: z

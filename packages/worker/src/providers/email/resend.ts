@@ -139,11 +139,15 @@ export class ResendProvider implements Provider {
       ? `${envelope.sender.name} <${envelope.sender.email}>`
       : envelope.sender.email
 
+    // Reply-To from email overrides (e.g., form submitter's email)
+    const replyTo = envelope.overrides?.email?.replyTo
+
     return {
       channel: 'email',
       data: {
         to: emailRecipients,
         from,
+        replyTo,
         subject,
         text: envelope.payload.text,
         html: envelope.payload.html,
@@ -190,7 +194,7 @@ export class ResendProvider implements Provider {
     const startTime = Date.now()
 
     return tracer.startActiveSpan('resend.send', async (span) => {
-      const { to, from, subject, text, html } = prepared.data
+      const { to, from, replyTo, subject, text, html } = prepared.data
       const messageId = options?.messageId
 
       // Add semantic span attributes for messaging operations
@@ -220,6 +224,7 @@ export class ResendProvider implements Provider {
           subject,
           text,
           html,
+          ...(replyTo ? { replyTo } : {}),
         })
 
         if (response.error) {

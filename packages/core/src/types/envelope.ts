@@ -152,6 +152,8 @@ export interface ChannelOverrides {
     subject?: string
     /** Email provider to use (overrides default) */
     provider?: EmailProviderType
+    /** Reply-To address (e.g., the form submitter's email) */
+    replyTo?: string
   }
   /** Slack-specific overrides */
   slack?: {
