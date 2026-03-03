@@ -60,7 +60,7 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Enqueue and emit message.queued only when the message was newly created (idempotency: don't reprocess on duplicate)
       if (result.created) {
-        await enqueueMessage(queue, result.messageId, envelope)
+        await enqueueMessage(queue, result.messageId, envelope, projectId, request.log as any)
         await db.insert(events).values({
           id: createId(),
           messageId: result.messageId,
@@ -142,7 +142,7 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
       if (resendAttempt?.externalId) {
         const apiKey = process.env.RESEND_API_KEY
         const lastEvent = await fetchResendLastEvent(resendAttempt.externalId, apiKey, {
-          logger: request.log,
+          logger: request.log as any,
         })
         if (lastEvent) {
           await db

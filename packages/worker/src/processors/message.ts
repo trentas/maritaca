@@ -9,6 +9,7 @@ import {
   type DbClient,
   type Logger,
 } from '@maritaca/core'
+import { IntegrationService } from '@maritaca/core/integrations'
 import { createId } from '@paralleldrive/cuid2'
 import { providerRegistry } from '../providers/registry.js'
 import type { Envelope, Channel } from '@maritaca/core'
@@ -19,6 +20,7 @@ export interface MessageJobData {
   messageId: string
   channel: Channel
   envelope: Envelope
+  projectId?: string
 }
 
 /**
@@ -30,8 +32,8 @@ export async function processMessageJob(
   jobData: MessageJobData,
   logger: Logger,
 ): Promise<void> {
-  const { messageId, channel, envelope } = jobData
-  
+  const { messageId, channel, envelope, projectId } = jobData
+
   const jobLogger = logger.child({ messageId, channel })
 
   // Create main span for the entire job processing
@@ -45,6 +47,29 @@ export async function processMessageJob(
     },
   }, async (span) => {
     try {
+      // Guard: if message is scheduled for the future, reject so BullMQ retries later
+      if (envelope.scheduleAt) {
+        const scheduledTime = new Date(envelope.scheduleAt).getTime()
+        const now = Date.now()
+        const remainingMs = scheduledTime - now
+
+        if (remainingMs > 5000) {
+          jobLogger.warn(
+            {
+              messageId,
+              scheduleAt: new Date(envelope.scheduleAt).toISOString(),
+              remainingMs,
+              remainingSec: Math.round(remainingMs / 1000),
+              now: new Date().toISOString(),
+            },
+            'Job arrived before scheduled time, rejecting for retry',
+          )
+          throw new Error(
+            `Message scheduled for ${new Date(envelope.scheduleAt).toISOString()}, ${Math.round(remainingMs / 1000)}s remaining`,
+          )
+        }
+      }
+
       jobLogger.debug('Processing message job')
 
       // Initialize provider registry with logger (idempotent)
@@ -110,9 +135,16 @@ export async function processMessageJob(
           return provider.prepare(envelope)
         })
 
+        // Load per-tenant credentials (if available)
+        let credentials: Record<string, string> | null = null
+        if (projectId && process.env.INTEGRATION_ENCRYPTION_KEY) {
+          const integrationService = new IntegrationService(db, process.env.INTEGRATION_ENCRYPTION_KEY)
+          credentials = await integrationService.getCredentials(projectId, channel)
+        }
+
         // Send message (external I/O - most important to trace)
         const response = await traceOperation(span, 'send', async (sendSpan) => {
-          const result = await provider.send(prepared, { messageId })
+          const result = await provider.send(prepared, { messageId, credentials })
           sendSpan.setAttribute('send.success', result.success)
           if (result.externalId) {
             sendSpan.setAttribute('send.externalId', result.externalId)

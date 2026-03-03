@@ -1,11 +1,12 @@
 import type Redis from 'ioredis'
 import { Queue, JobsOptions } from 'bullmq'
-import { parseRedisUrl, type Envelope } from '@maritaca/core'
+import { parseRedisUrl, type Envelope, type Logger } from '@maritaca/core'
 
 export interface QueueJobData {
   messageId: string
   channel: string
   envelope: Envelope
+  projectId: string
 }
 
 /**
@@ -21,7 +22,7 @@ export function createQueue(redisUrl: string, connection?: Redis): Queue<QueueJo
  * Calculate delay in milliseconds for scheduled messages
  * Returns 0 if scheduleAt is in the past or not specified
  */
-function calculateDelay(scheduleAt?: Date): number {
+export function calculateDelay(scheduleAt?: Date): number {
   if (!scheduleAt) {
     return 0
   }
@@ -59,9 +60,28 @@ export async function enqueueMessage(
   queue: Queue<QueueJobData>,
   messageId: string,
   envelope: Envelope,
+  projectId: string,
+  logger?: Logger,
 ): Promise<void> {
   const delay = calculateDelay(envelope.scheduleAt)
   const priority = getJobPriority(envelope.priority)
+
+  if (envelope.scheduleAt) {
+    logger?.info(
+      {
+        messageId,
+        scheduleAt: envelope.scheduleAt.toISOString(),
+        delayMs: delay,
+        delaySec: Math.round(delay / 1000),
+        delayMin: Math.round(delay / 60_000),
+        now: new Date().toISOString(),
+        scheduled: delay > 0,
+      },
+      delay > 0
+        ? 'Scheduling message with delay'
+        : 'scheduleAt is in the past, processing immediately',
+    )
+  }
 
   // Base job options
   const jobOptions: JobsOptions = {
@@ -86,6 +106,7 @@ export async function enqueueMessage(
         messageId,
         channel,
         envelope,
+        projectId,
       },
       jobOptions,
     ),
