@@ -222,6 +222,12 @@ export class SlackProvider implements Provider {
       },
     ]
 
+    // Extract display overrides
+    const slackOverrides = envelope.overrides?.slack
+    const username = slackOverrides?.username
+    const iconUrl = slackOverrides?.iconUrl
+    const iconEmoji = slackOverrides?.iconEmoji
+
     return {
       channel: 'slack',
       data: {
@@ -229,6 +235,9 @@ export class SlackProvider implements Provider {
         recipientInfo,
         text,
         blocks,
+        username,
+        iconUrl,
+        iconEmoji,
       },
     }
   }
@@ -425,7 +434,7 @@ export class SlackProvider implements Provider {
     const startTime = Date.now()
 
     return tracer.startActiveSpan('slack.send', async (span) => {
-      const { recipientInfo, text, blocks } = prepared.data
+      const { recipientInfo, text, blocks, username, iconUrl, iconEmoji } = prepared.data
       // Resolve bot token: per-tenant credentials → env fallback
       const botToken = options?.credentials?.botToken || process.env.SLACK_BOT_TOKEN || ''
       const messageId = options?.messageId
@@ -480,7 +489,7 @@ export class SlackProvider implements Provider {
         // Send to each target with retry logic
         const results = await Promise.allSettled(
           targets.map((target: string) =>
-            this.sendWithRetry(client, target, text, blocks),
+            this.sendWithRetry(client, target, text, blocks, { username, iconUrl, iconEmoji }),
           ),
         )
 
@@ -571,6 +580,7 @@ export class SlackProvider implements Provider {
     target: string,
     text: string,
     blocks: (KnownBlock | Block)[],
+    display?: { username?: string; iconUrl?: string; iconEmoji?: string },
   ): Promise<WebAPICallResult> {
     let lastError: Error | null = null
 
@@ -580,6 +590,9 @@ export class SlackProvider implements Provider {
           channel: target,
           text,
           blocks,
+          ...(display?.username && { username: display.username }),
+          ...(display?.iconUrl && { icon_url: display.iconUrl }),
+          ...(display?.iconEmoji && { icon_emoji: display.iconEmoji }),
         })
       } catch (error: any) {
         lastError = error

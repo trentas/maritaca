@@ -159,6 +159,12 @@ export interface ChannelOverrides {
   slack?: {
     /** Slack block kit blocks */
     blocks?: any[]
+    /** Override bot display name */
+    username?: string
+    /** Override bot icon with an image URL */
+    iconUrl?: string
+    /** Override bot icon with a Slack emoji (e.g. ":parrot:") */
+    iconEmoji?: string
   }
   /** SMS-specific overrides */
   sms?: {

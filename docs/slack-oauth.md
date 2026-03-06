@@ -26,6 +26,7 @@ In the Slack App dashboard, go to **OAuth & Permissions**:
 
 2. **Bot Token Scopes** — add at minimum:
    - `chat:write` — send messages
+   - `users:read` — required by `users:read.email`
    - `users:read.email` — resolve users by email
 
 ### Local development with ngrok
@@ -146,13 +147,58 @@ curl -X POST "http://localhost:7377/v1/messages" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
+    "idempotencyKey": "slack-test-1",
     "channels": ["slack"],
-    "recipients": [{"slackUserId": "U12345678"}],
-    "content": {"subject": "Test", "body": "Hello from Maritaca!"}
+    "sender": { "name": "Maritaca" },
+    "recipient": {
+      "slack": { "channelName": "#general" }
+    },
+    "payload": {
+      "title": "Hello",
+      "text": "Hello from Maritaca!"
+    }
   }'
 ```
 
 The worker automatically uses the project's OAuth token. If no integration exists, it falls back to the global `SLACK_BOT_TOKEN`.
+
+#### Customizing the bot appearance
+
+You can override the bot's display name and icon per message using `overrides.slack`:
+
+```bash
+curl -X POST "http://localhost:7377/v1/messages" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "idempotencyKey": "slack-custom-icon",
+    "channels": ["slack"],
+    "sender": { "name": "Maritaca" },
+    "recipient": {
+      "slack": { "channelName": "#general" }
+    },
+    "payload": {
+      "text": "Custom bot appearance!"
+    },
+    "overrides": {
+      "slack": {
+        "username": "Deploy Bot",
+        "iconEmoji": ":rocket:"
+      }
+    }
+  }'
+```
+
+Available overrides:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `username` | Override bot display name | `"Deploy Bot"` |
+| `iconEmoji` | Override icon with a Slack emoji | `":rocket:"` |
+| `iconUrl` | Override icon with an image URL | `"https://example.com/icon.png"` |
+| `blocks` | Custom Slack Block Kit blocks | `[{"type": "section", ...}]` |
+
+> **Note:** `iconEmoji` and `iconUrl` are mutually exclusive — if both are set, Slack uses `iconEmoji`.
 
 ### Step 5 — Revoke integration
 

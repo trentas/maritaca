@@ -145,6 +145,9 @@ export const channelOverridesSchema = z.object({
   slack: z
     .object({
       blocks: z.array(z.any()).optional(),
+      username: z.string().optional(),
+      iconUrl: z.string().url().optional(),
+      iconEmoji: z.string().optional(),
     })
     .optional(),
   sms: z
