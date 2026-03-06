@@ -84,7 +84,7 @@ describe('Slack Provider', () => {
       expect(() => provider.validate(envelope)).toThrow('At least one recipient must have a Slack identifier')
     })
 
-    it('should throw if SLACK_BOT_TOKEN env var is not set', () => {
+    it('should not throw if SLACK_BOT_TOKEN is unset (per-tenant credentials resolved at send time)', () => {
       const envelope: Envelope = {
         idempotencyKey: 'key',
         sender: {},
@@ -96,7 +96,8 @@ describe('Slack Provider', () => {
       // Clear env var for this test
       delete process.env.SLACK_BOT_TOKEN
 
-      expect(() => provider.validate(envelope)).toThrow('SLACK_BOT_TOKEN environment variable is required')
+      // validate() no longer checks for token — it's resolved at send() from per-tenant credentials or env
+      expect(() => provider.validate(envelope)).not.toThrow()
     })
   })
 
@@ -114,7 +115,7 @@ describe('Slack Provider', () => {
       expect(prepared.channel).toBe('slack')
       expect(prepared.data.recipientInfo.directTargets).toContain('U123')
       expect(prepared.data.text).toBe('Test message')
-      expect(prepared.data.botToken).toBe('xoxb-test-token')
+      // botToken is no longer set during prepare(); it's resolved at send() from options.credentials or env
     })
 
     it('should prepare message for Slack using channelId', () => {

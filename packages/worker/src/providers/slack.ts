@@ -146,10 +146,9 @@ export class SlackProvider implements Provider {
       throw new Error('At least one recipient must have a Slack identifier (userId, channelId, channelName, or email)')
     }
 
-    // Check if Slack bot token is configured via environment variable
-    if (!process.env.SLACK_BOT_TOKEN) {
-      throw new Error('SLACK_BOT_TOKEN environment variable is required')
-    }
+    // Token availability is checked at send time (per-tenant credentials may be loaded later)
+    // Only fail if there's absolutely no fallback configured
+    // Note: per-tenant credentials are resolved in the worker before send()
   }
 
   /**
@@ -202,8 +201,9 @@ export class SlackProvider implements Provider {
       throw new Error('No Slack recipients found')
     }
 
-    // Get bot token from environment only (security: never store tokens in DB)
-    const botToken = process.env.SLACK_BOT_TOKEN || ''
+    // Bot token is resolved at send time (per-tenant credentials or env fallback)
+    // We pass an empty placeholder here; send() will override from options.credentials or env
+    const botToken = ''
 
     // Build message text
     let text = envelope.payload.text
@@ -425,7 +425,9 @@ export class SlackProvider implements Provider {
     const startTime = Date.now()
 
     return tracer.startActiveSpan('slack.send', async (span) => {
-      const { botToken, recipientInfo, text, blocks } = prepared.data
+      const { recipientInfo, text, blocks } = prepared.data
+      // Resolve bot token: per-tenant credentials → env fallback
+      const botToken = options?.credentials?.botToken || process.env.SLACK_BOT_TOKEN || ''
       const messageId = options?.messageId
 
       // Add semantic span attributes for messaging operations

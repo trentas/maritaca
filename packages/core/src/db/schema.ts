@@ -160,3 +160,30 @@ export type ApiKey = typeof apiKeys.$inferSelect
 export type NewApiKey = typeof apiKeys.$inferInsert
 export type AuditLogRecord = typeof auditLogs.$inferSelect
 export type NewAuditLog = typeof auditLogs.$inferInsert
+
+/**
+ * Integrations table
+ * Stores per-project OAuth credentials for external providers (e.g. Slack)
+ * Credentials are encrypted with AES-256-GCM before storage
+ */
+export const integrations = pgTable('integrations', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  projectId: varchar('project_id', { length: 255 }).notNull(),
+  channel: varchar('channel', { length: 50 }).notNull(),
+  provider: varchar('provider', { length: 100 }).notNull(),
+  credentials: jsonb('credentials').notNull(),
+  metadata: jsonb('metadata'),
+  status: varchar('status', { length: 20 }).notNull().default('active'),
+  installedAt: timestamp('installed_at'),
+  installedBy: varchar('installed_by', { length: 255 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  projectChannelIdx: uniqueIndex('integrations_project_channel_idx').on(table.projectId, table.channel, table.provider),
+  projectIdIdx: index('integrations_project_id_idx').on(table.projectId),
+}))
+
+export type Integration = typeof integrations.$inferSelect
+export type NewIntegration = typeof integrations.$inferInsert

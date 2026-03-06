@@ -66,7 +66,7 @@ export class SnsPushProvider implements Provider {
   channel = 'push' as const
   name = 'sns-push'
   private logger: Logger
-  private client: SNSClient
+  private client: InstanceType<typeof SNSClient>
   private region: string
   private platformArns: Record<string, string | undefined>
 

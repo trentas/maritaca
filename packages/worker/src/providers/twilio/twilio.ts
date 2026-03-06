@@ -83,7 +83,7 @@ export class TwilioProvider implements Provider {
     return `twilio-${this.channel}`
   }
   private logger: Logger
-  private client: Twilio
+  private client: InstanceType<typeof Twilio>
   private smsFrom: string
   private whatsappFrom: string
   private accountSid: string

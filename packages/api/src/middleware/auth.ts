@@ -40,6 +40,10 @@ export function createAuthOnRequestHandler(): (request: FastifyRequest, reply: i
     if (request.url === '/webhooks/resend' && request.method === 'POST') {
       return
     }
+    // Slack OAuth callback is called by Slack redirect (no API key)
+    if (request.url.startsWith('/v1/integrations/slack/callback')) {
+      return
+    }
 
     const authHeader = request.headers.authorization
 

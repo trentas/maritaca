@@ -44,7 +44,8 @@ export * from './db/schema.js'
 export { createDbClient, type DbClient } from './db/client.js'
 
 // Re-export commonly used database tables for convenience
-export { messages, attempts, events, apiKeys, auditLogs } from './db/schema.js'
+export { messages, attempts, events, apiKeys, auditLogs, integrations } from './db/schema.js'
+export type { Integration, NewIntegration } from './db/schema.js'
 
 // Logger
 export { createLogger, createSyncLogger, createChildLogger, type Logger } from './logger/index.js'

@@ -67,7 +67,7 @@ export class SnsSmsProvider implements Provider {
   channel = 'sms' as const
   name = 'sns-sms'
   private logger: Logger
-  private client: SNSClient | null
+  private client: InstanceType<typeof SNSClient> | null
   private region: string
 
   constructor(options?: SnsSmsProviderOptions) {
@@ -325,6 +325,10 @@ export class SnsSmsProvider implements Provider {
         DataType: 'String',
         StringValue: senderId,
       }
+    }
+
+    if (!this.client) {
+      throw new Error('SNS client is not configured (missing AWS_REGION)')
     }
 
     const command = new PublishCommand({

@@ -12,6 +12,7 @@ import {
 } from '@maritaca/core'
 import { messageRoutes } from './routes/messages.js'
 import { resendWebhookRoutes } from './routes/webhooks/resend.js'
+import { slackIntegrationRoutes } from './routes/integrations/slack.js'
 import { createAuthOnRequestHandler } from './middleware/auth.js'
 import { createQueue } from './services/queue.js'
 
@@ -48,7 +49,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       serviceName: 'maritaca-api',
       level: logLevel,
     }))
-  const server = Fastify({ logger: logger as any })
+  const server = Fastify({ logger: logger as any, trustProxy: true })
 
   // Register environment variables
   await server.register(import('@fastify/env'), {
@@ -111,7 +112,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     },
     // Skip rate limiting for health check and Resend webhook
     allowList: (request) => {
-      return request.url === '/health' || request.url === '/webhooks/resend'
+      return request.url === '/health' || request.url === '/webhooks/resend' || request.url.startsWith('/v1/integrations/slack/callback')
     },
     // Custom error response
     errorResponseBuilder: (request, context) => {
@@ -138,6 +139,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // Register routes on same server (no prefix encapsulation) so request.projectId from auth is visible
   await server.register(messageRoutes)
   await server.register(resendWebhookRoutes)
+  await server.register(slackIntegrationRoutes)
 
   // Track health status for metrics
   let currentHealthStatus = 1 // 1 = healthy, 0 = degraded

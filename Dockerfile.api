@@ -6,7 +6,7 @@ RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 WORKDIR /app
 
 # Copy package files
-COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml .npmrc* ./
 COPY packages/core/package.json ./packages/core/
 COPY packages/api/package.json ./packages/api/
 
@@ -27,7 +27,7 @@ RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 WORKDIR /app
 
 # Copy package files
-COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml .npmrc* ./
 COPY packages/core/package.json ./packages/core/
 COPY packages/api/package.json ./packages/api/
 

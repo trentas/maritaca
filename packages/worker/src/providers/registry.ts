@@ -34,7 +34,7 @@ class ProviderRegistry {
     options?: { emailProvider?: EmailProviderType; smsProvider?: SmsProviderType }
   ): Provider | null {
     // Build cache key - include provider type for channels that support multiple providers
-    let cacheKey = channel
+    let cacheKey: string = channel
     if (channel === 'email' && options?.emailProvider) {
       cacheKey = `email:${options.emailProvider}`
     } else if (channel === 'sms' && options?.smsProvider) {

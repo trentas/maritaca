@@ -17,6 +17,8 @@ export interface PreparedMessage {
 export interface SendOptions {
   /** Message ID for tracing/logging */
   messageId?: string
+  /** Per-tenant credentials from integration store (null = use env fallback) */
+  credentials?: Record<string, string> | null
 }
 
 /**

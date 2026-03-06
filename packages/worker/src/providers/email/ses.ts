@@ -17,7 +17,7 @@ import {
   recordRateLimit,
 } from '@maritaca/core'
 import sesSdk from '@aws-sdk/client-ses'
-const { SESClient, SendEmailCommand, GetAccountCommand } = sesSdk
+const { SESClient, SendEmailCommand, GetAccountSendingEnabledCommand } = sesSdk
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
 /**
@@ -75,7 +75,7 @@ export class SESProvider implements Provider {
   channel = 'email' as const
   name = 'ses'
   private logger: Logger
-  private client: SESClient
+  private client: InstanceType<typeof SESClient>
   private region: string
 
   constructor(options?: SESProviderOptions) {
@@ -188,15 +188,14 @@ export class SESProvider implements Provider {
     }
 
     try {
-      const command = new GetAccountCommand({})
+      const command = new GetAccountSendingEnabledCommand({})
       const response = await this.client.send(command)
 
       return {
         ok: true,
         details: {
           region: this.region,
-          sendQuota: response.SendQuota,
-          enforcementStatus: response.EnforcementStatus,
+          sendingEnabled: response.Enabled,
         },
       }
     } catch (error: any) {

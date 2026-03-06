@@ -50,6 +50,13 @@
       "when": 1768910240000,
       "tag": "0006_fix_audit_logs_partitioned",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1768910250000,
+      "tag": "0007_create_integrations",
+      "breakpoints": true
     }
   ]
 }

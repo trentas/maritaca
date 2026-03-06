@@ -3,7 +3,11 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
-    "composite": true
+    "composite": true,
+    "paths": {
+      "drizzle-orm": ["../core/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../core/node_modules/drizzle-orm/*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/__tests__/**"],
