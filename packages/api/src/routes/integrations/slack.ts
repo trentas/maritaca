@@ -73,7 +73,7 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
     const callbackUrl = `${proto}://${request.hostname}/v1/integrations/slack/callback`
     const params = new URLSearchParams({
       client_id: clientId,
-      scope: 'chat:write,users:read,users:read.email',
+      scope: 'chat:write,chat:write.customize,users:read,users:read.email',
       redirect_uri: callbackUrl,
       state,
     })

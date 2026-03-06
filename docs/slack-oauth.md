@@ -26,6 +26,7 @@ In the Slack App dashboard, go to **OAuth & Permissions**:
 
 2. **Bot Token Scopes** — add at minimum:
    - `chat:write` — send messages
+   - `chat:write.customize` — customize bot name and icon per message
    - `users:read` — required by `users:read.email`
    - `users:read.email` — resolve users by email
 
