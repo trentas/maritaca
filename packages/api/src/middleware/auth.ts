@@ -34,7 +34,7 @@ export function createAuthOnRequestHandler(): (request: FastifyRequest, reply: i
     request.log.debug({ url: request.url }, '[auth] onRequest started')
 
     // Skip authentication for health check and Resend webhook (verified by Svix signature)
-    if (request.url === '/health') {
+    if (request.url === '/health' || request.url === '/version') {
       return
     }
     if (request.url === '/webhooks/resend' && request.method === 'POST') {

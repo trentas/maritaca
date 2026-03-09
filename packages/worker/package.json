@@ -1,6 +1,6 @@
 {
   "name": "@maritaca/worker",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "BullMQ worker for processing Maritaca notifications",
   "type": "module",
   "main": "./dist/index.js",

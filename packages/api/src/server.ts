@@ -10,6 +10,7 @@ import {
   type DbClient,
   type Logger,
 } from '@maritaca/core'
+import { createRequire } from 'module'
 import { messageRoutes } from './routes/messages.js'
 import { resendWebhookRoutes } from './routes/webhooks/resend.js'
 import { slackIntegrationRoutes } from './routes/integrations/slack.js'
@@ -112,7 +113,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     },
     // Skip rate limiting for health check and Resend webhook
     allowList: (request) => {
-      return request.url === '/health' || request.url === '/webhooks/resend' || request.url.startsWith('/v1/integrations/slack/callback')
+      return request.url === '/health' || request.url === '/version' || request.url === '/webhooks/resend' || request.url.startsWith('/v1/integrations/slack/callback')
     },
     // Custom error response
     errorResponseBuilder: (request, context) => {
@@ -147,6 +148,15 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // Register observable gauge callback for health status
   healthStatusGauge.addCallback((observableResult) => {
     observableResult.observe(currentHealthStatus, {})
+  })
+
+  // Version endpoint
+  const require = createRequire(import.meta.url)
+  const { version } = require('../../package.json')
+  const commitSha = process.env.COMMIT_SHA || null
+
+  server.get('/version', async (_request, reply) => {
+    return reply.send({ version, commitSha })
   })
 
   // Health check endpoint

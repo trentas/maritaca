@@ -22,6 +22,9 @@ RUN pnpm build --filter=@maritaca/core --filter=@maritaca/api
 # Production stage
 FROM node:22-alpine AS production
 
+ARG COMMIT_SHA=""
+ENV COMMIT_SHA=${COMMIT_SHA}
+
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
 WORKDIR /app
