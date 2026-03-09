@@ -152,7 +152,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
 
   // Version endpoint
   const require = createRequire(import.meta.url)
-  const { version } = require('../../package.json')
+  const { version } = require('../package.json')
   const commitSha = process.env.COMMIT_SHA || null
 
   server.get('/version', async (_request, reply) => {
