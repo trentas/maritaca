@@ -21,6 +21,7 @@
     "remove-api-key": "dotenv -e .env -- tsx scripts/remove-api-key.ts",
     "trigger-maintenance": "dotenv -e .env -- tsx scripts/trigger-maintenance.ts",
     "run-maintenance": "dotenv -e .env -- tsx scripts/run-maintenance.ts",
+    "inspect-queue": "dotenv -e .env -- tsx scripts/inspect-queue.ts",
     "test:otlp": "dotenv -e .env -- tsx scripts/test-otlp.ts",
     "db:push": "pnpm --filter @maritaca/core db:push",
     "db:migrate": "pnpm --filter @maritaca/core db:migrate",

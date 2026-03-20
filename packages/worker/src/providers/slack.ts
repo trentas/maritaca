@@ -1,4 +1,4 @@
-import { WebClient, WebAPICallResult } from '@slack/web-api'
+import { WebClient, WebAPICallResult, type ChatPostMessageArguments } from '@slack/web-api'
 import type { KnownBlock, Block } from '@slack/types'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 import type {
@@ -586,14 +586,11 @@ export class SlackProvider implements Provider {
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
       try {
-        return await client.chat.postMessage({
-          channel: target,
-          text,
-          blocks,
-          ...(display?.username && { username: display.username }),
-          ...(display?.iconUrl && { icon_url: display.iconUrl }),
-          ...(display?.iconEmoji && { icon_emoji: display.iconEmoji }),
-        })
+        const args: ChatPostMessageArguments = { channel: target, text, blocks }
+        if (display?.username) args.username = display.username
+        if (display?.iconUrl) args.icon_url = display.iconUrl
+        if (display?.iconEmoji) args.icon_emoji = display.iconEmoji
+        return await client.chat.postMessage(args)
       } catch (error: any) {
         lastError = error
 
