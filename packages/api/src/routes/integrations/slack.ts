@@ -112,7 +112,8 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
       // Try to extract redirectUri from state for user redirect
       try {
         const payload = verifyState(state || '', signingSecret)
-        return reply.redirect(`${payload.redirectUri}?status=error&error=${encodeURIComponent(slackError)}`)
+        const sep = payload.redirectUri.includes('?') ? '&' : '?'
+        return reply.redirect(`${payload.redirectUri}${sep}status=error&error=${encodeURIComponent(slackError)}`)
       } catch {
         return reply.code(400).send({ error: 'OAuth Error', message: slackError })
       }
@@ -132,6 +133,8 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { projectId, redirectUri, callbackUrl } = payload
+    // Use & if redirectUri already has query params, otherwise ?
+    const redirectSep = redirectUri.includes('?') ? '&' : '?'
 
     // Exchange code for token — callbackUrl must match the one used in the authorize step
     try {
@@ -159,7 +162,7 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (!tokenData.ok || !tokenData.access_token) {
         request.log.error({ tokenData }, 'Slack token exchange failed')
-        return reply.redirect(`${redirectUri}?status=error&error=${encodeURIComponent(tokenData.error || 'token_exchange_failed')}`)
+        return reply.redirect(`${redirectUri}${redirectSep}status=error&error=${encodeURIComponent(tokenData.error || 'token_exchange_failed')}`)
       }
 
       // Save encrypted credentials
@@ -184,10 +187,10 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
       )
 
       const teamName = tokenData.team?.name || ''
-      return reply.redirect(`${redirectUri}?status=success&team=${encodeURIComponent(teamName)}`)
+      return reply.redirect(`${redirectUri}${redirectSep}status=success&team=${encodeURIComponent(teamName)}`)
     } catch (err: any) {
       request.log.error({ err }, 'Slack OAuth callback error')
-      return reply.redirect(`${redirectUri}?status=error&error=${encodeURIComponent('internal_error')}`)
+      return reply.redirect(`${redirectUri}${redirectSep}status=error&error=${encodeURIComponent('internal_error')}`)
     }
   })
 
