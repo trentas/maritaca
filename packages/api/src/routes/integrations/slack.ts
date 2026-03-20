@@ -46,7 +46,7 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
    * Requires authentication (API key → projectId)
    */
   fastify.get<{
-    Querystring: { redirectUri: string }
+    Querystring: { redirectUri: string; callbackUrl?: string }
   }>('/v1/integrations/slack/authorize', async (request, reply) => {
     if (!clientId || !signingSecret) {
       return reply.code(500).send({
@@ -60,17 +60,25 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Project ID not found in request' })
     }
 
-    const { redirectUri } = request.query
+    const { redirectUri, callbackUrl: explicitCallback } = request.query
     if (!redirectUri) {
       return reply.code(400).send({ error: 'Bad Request', message: 'redirectUri query parameter is required' })
     }
 
-    const state = createState({ projectId, redirectUri }, signingSecret)
+    // Use the caller-provided callbackUrl (public-facing URL) so Slack can redirect
+    // back through the proxy, not to the internal container hostname.
+    // Falls back to building from request.hostname for local dev.
+    let callbackUrl: string
+    if (explicitCallback) {
+      callbackUrl = explicitCallback
+    } else {
+      const isLocal = request.hostname === 'localhost' || request.hostname.startsWith('127.')
+      const proto = isLocal ? 'http' : 'https'
+      callbackUrl = `${proto}://${request.hostname}/v1/integrations/slack/callback`
+    }
 
-    // Build the Slack OAuth URL — use https for non-localhost (proxy / production)
-    const isLocal = request.hostname === 'localhost' || request.hostname.startsWith('127.')
-    const proto = isLocal ? 'http' : 'https'
-    const callbackUrl = `${proto}://${request.hostname}/v1/integrations/slack/callback`
+    const state = createState({ projectId, redirectUri, callbackUrl }, signingSecret)
+
     const params = new URLSearchParams({
       client_id: clientId,
       scope: 'chat:write,chat:write.customize,users:read,users:read.email',
@@ -115,7 +123,7 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Verify and decode state
-    let payload: { projectId: string; redirectUri: string; exp: number }
+    let payload: { projectId: string; redirectUri: string; callbackUrl: string; exp: number }
     try {
       payload = verifyState(state, signingSecret) as any
     } catch (err: any) {
@@ -123,12 +131,10 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(400).send({ error: 'Bad Request', message: err.message })
     }
 
-    const { projectId, redirectUri } = payload
+    const { projectId, redirectUri, callbackUrl } = payload
 
-    // Exchange code for token
+    // Exchange code for token — callbackUrl must match the one used in the authorize step
     try {
-      const proto = (request.headers['x-forwarded-proto'] as string) || request.protocol
-      const callbackUrl = `${proto}://${request.hostname}/v1/integrations/slack/callback`
       const tokenResponse = await fetch('https://slack.com/api/oauth.v2.access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
