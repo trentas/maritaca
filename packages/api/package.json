@@ -1,6 +1,6 @@
 {
   "name": "@maritaca/api",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Fastify HTTP API server for Maritaca",
   "type": "module",
   "main": "./dist/index.js",
