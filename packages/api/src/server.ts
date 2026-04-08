@@ -10,7 +10,6 @@ import {
   type DbClient,
   type Logger,
 } from '@maritaca/core'
-import { createRequire } from 'module'
 import { messageRoutes } from './routes/messages.js'
 import { resendWebhookRoutes } from './routes/webhooks/resend.js'
 import { slackIntegrationRoutes } from './routes/integrations/slack.js'
@@ -151,8 +150,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   })
 
   // Version endpoint
-  const require = createRequire(import.meta.url)
-  const { version } = require('../package.json')
+  const version = process.env.APP_VERSION || null
   const commitSha = process.env.COMMIT_SHA || null
 
   server.get('/version', async (_request, reply) => {
