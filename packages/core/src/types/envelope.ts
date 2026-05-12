@@ -130,7 +130,7 @@ export interface Payload {
 /**
  * Email provider types
  */
-export type EmailProviderType = 'resend' | 'ses' | 'mock'
+export type EmailProviderType = 'resend' | 'ses' | 'mandrill' | 'mock'
 
 /**
  * SNS SMS message type

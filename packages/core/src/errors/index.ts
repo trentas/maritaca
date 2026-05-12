@@ -44,6 +44,14 @@ export const FATAL_ERROR_CODES: ReadonlySet<string> = new Set([
   'not_found',                 // Resource not found
 
   // ============================================================================
+  // Email (Mandrill / Mailchimp Transactional)
+  // ============================================================================
+  'invalid-sender',            // From address rejected
+  'hard-bounce',               // Permanent delivery failure
+  'unsigned',                  // Sender domain not authenticated (DKIM/SPF)
+  'rule',                      // Blocked by account rules
+
+  // ============================================================================
   // Email (SES)
   // ============================================================================
   'MessageRejected',           // Email rejected (unverified sender, etc.)
