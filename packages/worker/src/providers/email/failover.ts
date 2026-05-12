@@ -16,18 +16,26 @@ export interface FailoverEmailProviderOptions {
   logger?: Logger
 }
 
+const ENVELOPE_KEY = '__failoverEnvelope'
+
+interface FailoverPreparedData {
+  [ENVELOPE_KEY]: Envelope
+}
+
 /**
  * Email provider that delegates to an ordered chain of underlying providers.
  *
- * On `send()` it tries the primary; if the response indicates a non-fatal failure,
- * it walks down the chain until one succeeds or the chain is exhausted. `validate`
- * and `prepare` delegate to the primary — email providers in this repo accept the
- * same prepared shape (to / from / subject / text / html), so the primary's
- * prepared message is fed into every fallback's `send()`.
+ * `prepare()` stashes the envelope inside the returned `PreparedMessage`.
+ * `send()` then calls each child provider's own `prepare()` on demand, so each
+ * fallback receives a payload in its native shape (Resend/SES use a combined
+ * `from` string, Mandrill splits `from_email` / `from_name`). Without this
+ * per-provider re-prepare, a chain with mixed shapes — e.g. `resend,mandrill`
+ * — would send an incomplete payload to the fallback.
  *
- * Per-provider metrics (errors, durations, rate limits) are still recorded
- * inside each underlying provider, so observability is unchanged. The dispatcher
- * adds structured logs describing which provider actually delivered.
+ * Failover walks the chain on transient failures and short-circuits on fatal
+ * errors (codes in {@link FATAL_ERROR_CODES} from `@maritaca/core`). Per-provider
+ * metrics are still recorded inside each underlying provider; the dispatcher
+ * only adds structured logs describing which provider actually delivered.
  */
 export class FailoverEmailProvider implements Provider {
   channel = 'email' as const
@@ -45,14 +53,33 @@ export class FailoverEmailProvider implements Provider {
   }
 
   validate(envelope: Envelope): void {
-    this.providers[0].validate(envelope)
+    // Validate against every provider so a chain misconfiguration surfaces
+    // before we attempt to send. Each provider has its own constraints
+    // (e.g. Resend requires a sender email; Mock does not).
+    for (const provider of this.providers) {
+      provider.validate(envelope)
+    }
   }
 
   prepare(envelope: Envelope): PreparedMessage {
-    return this.providers[0].prepare(envelope)
+    return {
+      channel: 'email',
+      data: { [ENVELOPE_KEY]: envelope } satisfies FailoverPreparedData,
+    }
   }
 
   async send(prepared: PreparedMessage, options?: SendOptions): Promise<ProviderResponse> {
+    const envelope = (prepared.data as Partial<FailoverPreparedData>)[ENVELOPE_KEY]
+    if (!envelope) {
+      return {
+        success: false,
+        error: {
+          code: 'FAILOVER_MISSING_ENVELOPE',
+          message: 'FailoverEmailProvider.send was called with a prepared message that did not go through its prepare()',
+        },
+      }
+    }
+
     let lastResponse: ProviderResponse | null = null
     const attemptsLog: Array<{ provider: string; success: boolean; code?: string; message?: string }> = []
 
@@ -61,7 +88,8 @@ export class FailoverEmailProvider implements Provider {
       const isLast = i === this.providers.length - 1
 
       try {
-        const response = await provider.send(prepared, options)
+        const subPrepared = provider.prepare(envelope)
+        const response = await provider.send(subPrepared, options)
 
         if (response.success) {
           attemptsLog.push({ provider: provider.name, success: true })
