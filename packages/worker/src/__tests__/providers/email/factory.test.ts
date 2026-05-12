@@ -66,4 +66,36 @@ describe('createEmailProvider', () => {
   it('falls back to mock when nothing is configured', () => {
     expect(createEmailProvider()).toBeInstanceOf(MockEmailProvider)
   })
+
+  describe('chain resilience against misconfigured providers', () => {
+    it('skips a chain entry that fails to construct and keeps the rest', () => {
+      process.env.EMAIL_PROVIDERS = 'resend,mandrill'
+      delete process.env.MANDRILL_API_KEY // Make mandrill fail
+      const provider = createEmailProvider()
+      expect(provider).toBeInstanceOf(ResendProvider)
+    })
+
+    it('falls back to mock when every provider in the chain fails to construct', () => {
+      process.env.EMAIL_PROVIDERS = 'resend,mandrill'
+      delete process.env.RESEND_API_KEY
+      delete process.env.MANDRILL_API_KEY
+      const provider = createEmailProvider()
+      expect(provider).toBeInstanceOf(MockEmailProvider)
+    })
+
+    it('keeps the failover wrapper when at least two providers are usable', () => {
+      process.env.EMAIL_PROVIDERS = 'resend,mandrill,mock'
+      delete process.env.RESEND_API_KEY // Resend fails, the other two should still build
+      const provider = createEmailProvider()
+      expect(provider).toBeInstanceOf(FailoverEmailProvider)
+      expect(provider.name).toBe('failover(mandrill,mock-email)')
+    })
+
+    it('still throws when the single-provider EMAIL_PROVIDER mode is misconfigured', () => {
+      delete process.env.EMAIL_PROVIDERS
+      process.env.EMAIL_PROVIDER = 'resend'
+      delete process.env.RESEND_API_KEY
+      expect(() => createEmailProvider()).toThrow('RESEND_API_KEY is required')
+    })
+  })
 })
