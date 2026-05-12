@@ -43,7 +43,7 @@ describe('FailoverEmailProvider', () => {
     expect(() => new FailoverEmailProvider({ providers: [] })).toThrow('at least one provider')
   })
 
-  it('returns the primary response when it succeeds and tags providerUsed', async () => {
+  it('returns the primary response when it succeeds and tags provider + providerUsed', async () => {
     const primary = makeProvider('primary', async () => ({ success: true, externalId: 'p-1' }))
     const fallback = makeProvider('fallback', async () => ({ success: true, externalId: 'f-1' }))
 
@@ -52,6 +52,7 @@ describe('FailoverEmailProvider', () => {
 
     expect(res.success).toBe(true)
     expect(res.externalId).toBe('p-1')
+    expect(res.provider).toBe('primary')
     expect(res.data?.providerUsed).toBe('primary')
     expect(fallback.send).not.toHaveBeenCalled()
   })
@@ -68,6 +69,7 @@ describe('FailoverEmailProvider', () => {
 
     expect(res.success).toBe(true)
     expect(res.externalId).toBe('f-1')
+    expect(res.provider).toBe('fallback')
     expect(res.data?.providerUsed).toBe('fallback')
     expect(primary.send).toHaveBeenCalledOnce()
     expect(fallback.send).toHaveBeenCalledOnce()
@@ -113,12 +115,12 @@ describe('FailoverEmailProvider', () => {
     expect(res.data?.providerUsed).toBe('fallback')
   })
 
-  it('mapEvents uses providerUsed from response data', () => {
+  it('mapEvents uses response.provider when present', () => {
     const primary = makeProvider('primary', async () => ({ success: true }))
     const fallback = makeProvider('fallback', async () => ({ success: true }))
     const fp = new FailoverEmailProvider({ providers: [primary, fallback] })
 
-    const events = fp.mapEvents({ success: true, externalId: 'x', data: { providerUsed: 'fallback' } }, 'msg-1')
+    const events = fp.mapEvents({ success: true, externalId: 'x', provider: 'fallback' }, 'msg-1')
     expect(events[0].provider).toBe('fallback')
     expect(events[0].type).toBe('attempt.succeeded')
   })

@@ -178,6 +178,10 @@ export async function processMessageJob(
             await tx
               .update(attempts)
               .set({
+                // Dispatcher providers (failover) report the underlying provider that
+                // actually handled the send via response.provider; overwrite the row's
+                // provider with that so per-provider queries stay accurate.
+                ...(response.provider ? { provider: response.provider } : {}),
                 status: response.success ? 'succeeded' : 'failed',
                 error: response.error ? JSON.stringify(response.error) : null,
                 finishedAt: new Date(),

@@ -103,6 +103,7 @@ export class FailoverEmailProvider implements Provider {
 
           return {
             ...response,
+            provider: provider.name,
             data: { ...(response.data ?? {}), providerUsed: provider.name, failoverAttempts: attemptsLog },
           }
         }
@@ -162,7 +163,10 @@ export class FailoverEmailProvider implements Provider {
   }
 
   mapEvents(response: ProviderResponse, messageId: string): MaritacaEvent[] {
-    const provider = (response.data?.providerUsed as string | undefined) ?? this.providers[0].name
+    const provider =
+      response.provider ??
+      (response.data?.providerUsed as string | undefined) ??
+      this.providers[0].name
 
     if (response.success) {
       return [

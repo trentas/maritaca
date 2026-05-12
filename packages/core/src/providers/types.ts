@@ -37,4 +37,11 @@ export interface ProviderResponse {
   }
   /** External provider message ID (if available) */
   externalId?: string
+  /**
+   * Name of the underlying provider that actually handled the request.
+   * Dispatcher/proxy providers (e.g. failover) set this to the chosen
+   * child provider's name so persistence layers can record the real
+   * deliverer instead of the wrapper. Plain providers leave it unset.
+   */
+  provider?: string
 }
