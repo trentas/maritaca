@@ -1,0 +1,56 @@
+# Dependabot configuration — version updates only.
+# Security alerts and security-only update PRs are repo-level toggles
+# (Settings → Code security) and cannot be enabled from this file.
+# Docs: https://docs.github.com/en/code-security/dependabot
+version: 2
+updates:
+  # npm / pnpm workspace — Dependabot detects pnpm-lock.yaml and updates
+  # every package.json under packages/* from the repo root.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps-dev)
+      include: scope
+    groups:
+      production-minor-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      development-minor-patch:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    # Majors are not grouped — surface them as individual PRs so they
+    # can be reviewed against their own changelog.
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+
+  # Picks up Dockerfile, Dockerfile.api, Dockerfile.worker, Dockerfile.migrate.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: chore(deps)
+      include: scope
