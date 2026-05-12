@@ -185,7 +185,7 @@ jobs:
 
       # scp-action "target" is a directory; files keep their names. Use DEPLOY_PATH only.
       - name: Prepare deploy path on VPS
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ vars.SSH_HOST }}
           username: ${{ vars.SSH_USER }}
@@ -215,7 +215,7 @@ jobs:
           target: "${{ vars.DEPLOY_PATH }}"
 
       - name: Deploy on VPS
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         env:
           API_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-api:sha-${{ github.sha }}
           WORKER_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-worker:sha-${{ github.sha }}
