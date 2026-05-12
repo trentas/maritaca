@@ -16,7 +16,10 @@ import {
   recordProviderError,
   recordRateLimit,
 } from '@maritaca/core'
-import mailchimpFactory from '@mailchimp/mailchimp_transactional'
+import mailchimpFactory, {
+  type MandrillClient,
+  type MandrillMessage,
+} from '@mailchimp/mailchimp_transactional'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 
 export interface MandrillProviderOptions {
@@ -29,38 +32,6 @@ export interface HealthCheckResult {
   ok: boolean
   error?: string
   details?: Record<string, unknown>
-}
-
-interface MandrillSendResult {
-  email: string
-  status: 'sent' | 'queued' | 'scheduled' | 'rejected' | 'invalid'
-  _id?: string
-  reject_reason?: string | null
-}
-
-interface MandrillClient {
-  messages: {
-    send(params: { message: MandrillMessage }): Promise<MandrillSendResult[] | { status: string; name?: string; message?: string }>
-  }
-  users: {
-    ping(): Promise<string | { status: string; name?: string; message?: string }>
-  }
-}
-
-interface MandrillRecipient {
-  email: string
-  name?: string
-  type: 'to' | 'cc' | 'bcc'
-}
-
-interface MandrillMessage {
-  from_email: string
-  from_name?: string
-  to: MandrillRecipient[]
-  subject: string
-  text?: string
-  html?: string
-  headers?: Record<string, string>
 }
 
 const tracer = trace.getTracer('maritaca-mandrill-provider')
@@ -84,7 +55,7 @@ export class MandrillProvider implements Provider {
       throw new Error('MANDRILL_API_KEY is required for MandrillProvider')
     }
 
-    this.client = mailchimpFactory(apiKey) as unknown as MandrillClient
+    this.client = mailchimpFactory(apiKey)
   }
 
   validate(envelope: Envelope): void {

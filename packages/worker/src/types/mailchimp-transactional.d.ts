@@ -1,11 +1,11 @@
 declare module '@mailchimp/mailchimp_transactional' {
-  interface MandrillRecipient {
+  export interface MandrillRecipient {
     email: string
     name?: string
     type: 'to' | 'cc' | 'bcc'
   }
 
-  interface MandrillMessage {
+  export interface MandrillMessage {
     from_email: string
     from_name?: string
     to: MandrillRecipient[]
@@ -15,20 +15,20 @@ declare module '@mailchimp/mailchimp_transactional' {
     headers?: Record<string, string>
   }
 
-  interface MandrillSendResult {
+  export interface MandrillSendResult {
     email: string
     status: 'sent' | 'queued' | 'scheduled' | 'rejected' | 'invalid'
     _id?: string
     reject_reason?: string | null
   }
 
-  interface MandrillErrorResponse {
+  export interface MandrillErrorResponse {
     status: string
     name?: string
     message?: string
   }
 
-  interface MandrillClient {
+  export interface MandrillClient {
     messages: {
       send(params: { message: MandrillMessage }): Promise<MandrillSendResult[] | MandrillErrorResponse>
     }
