@@ -197,7 +197,7 @@ jobs:
       - name: Copy .env to VPS
         run: cp .env.production .env
       - name: SCP .env to VPS
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ vars.SSH_HOST }}
           username: ${{ vars.SSH_USER }}
@@ -206,7 +206,7 @@ jobs:
           target: "${{ vars.DEPLOY_PATH }}"
 
       - name: Copy docker-compose.prod.yml to VPS
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ vars.SSH_HOST }}
           username: ${{ vars.SSH_USER }}
