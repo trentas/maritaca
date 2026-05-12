@@ -31,7 +31,7 @@
     "@slack/types": "^2.19.0",
     "@slack/web-api": "^7.0.0",
     "bullmq": "^5.0.0",
-    "drizzle-orm": "^0.31.0",
+    "drizzle-orm": "^0.45.2",
     "grammy": "^1.39.3",
     "ioredis": "^5.3.0",
     "@mailchimp/mailchimp_transactional": "^1.0.59",
