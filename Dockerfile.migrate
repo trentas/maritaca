@@ -1,7 +1,7 @@
 # Image to run Drizzle migrations in production.
 # Uses minimal config (no schema) so we only need migrations folder and drizzle-kit.
 
-FROM node:22-alpine
+FROM node:26-alpine
 
 RUN corepack enable && corepack prepare pnpm@11.1.1 --activate
 
