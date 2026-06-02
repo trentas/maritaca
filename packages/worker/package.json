@@ -36,8 +36,8 @@
     "ioredis": "^5.10.1",
     "@mailchimp/mailchimp_transactional": "^1.0.59",
     "lru-cache": "^11.3.6",
-    "resend": "^4.0.0",
-    "twilio": "^5.11.2",
+    "resend": "^6.12.3",
+    "twilio": "^6.0.2",
     "web-push": "^3.6.7",
     "@opentelemetry/instrumentation-pg": "^0.51.0"
   },

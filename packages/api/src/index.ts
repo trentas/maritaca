@@ -4,10 +4,11 @@ import path from 'path'
 
 // Load .env from repo root (monorepo) or cwd so PORT, HOST, LOG_LEVEL, etc. are applied.
 // override: true so .env wins over existing env vars (e.g. LOG_LEVEL=debug in .env overrides shell).
+// quiet: true suppresses dotenv 17's startup banner so it does not pollute the structured logs.
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const envPath = path.resolve(__dirname, '../../.env')
-loadEnv({ path: envPath, override: true })
-loadEnv({ override: true }) // also .env in cwd
+loadEnv({ path: envPath, override: true, quiet: true })
+loadEnv({ override: true, quiet: true }) // also .env in cwd
 
 import './instrumentation.js'
 import { startServer } from './server.js'
