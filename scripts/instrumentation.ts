@@ -7,12 +7,12 @@
  */
 
 import { NodeSDK } from '@opentelemetry/sdk-node'
-import { Resource } from '@opentelemetry/resources'
+import { resourceFromAttributes } from '@opentelemetry/resources'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 
 const serviceName = process.env.OTEL_SERVICE_NAME || 'maritaca-scripts'
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   'service.name': serviceName,
   'deployment.environment': process.env.NODE_ENV || 'development',
 })
