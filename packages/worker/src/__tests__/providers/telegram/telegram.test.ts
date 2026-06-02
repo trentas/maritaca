@@ -7,12 +7,14 @@ const mockGetMe = vi.fn()
 
 vi.mock('grammy', () => {
   return {
-    Bot: vi.fn().mockImplementation(() => ({
-      api: {
-        sendMessage: mockSendMessage,
-        getMe: mockGetMe,
-      },
-    })),
+    Bot: vi.fn().mockImplementation(function () {
+      return {
+        api: {
+          sendMessage: mockSendMessage,
+          getMe: mockGetMe,
+        },
+      }
+    }),
   }
 })
 

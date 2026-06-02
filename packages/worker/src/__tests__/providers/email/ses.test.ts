@@ -3,11 +3,17 @@ import type { Envelope } from '@maritaca/core'
 
 // Mock the AWS SES client before importing SESProvider
 vi.mock('@aws-sdk/client-ses', () => {
-  const SESClient = vi.fn().mockImplementation(() => ({
-    send: vi.fn(),
-  }))
-  const SendEmailCommand = vi.fn().mockImplementation((input) => ({ input }))
-  const GetAccountCommand = vi.fn().mockImplementation((input) => ({ input }))
+  const SESClient = vi.fn().mockImplementation(function () {
+    return {
+      send: vi.fn(),
+    }
+  })
+  const SendEmailCommand = vi.fn().mockImplementation(function (input) {
+    return { input }
+  })
+  const GetAccountCommand = vi.fn().mockImplementation(function (input) {
+    return { input }
+  })
   
   return {
     SESClient,
@@ -198,9 +204,11 @@ describe('SESProvider', () => {
 
     beforeEach(() => {
       mockSend = vi.fn()
-      vi.mocked(SESClient).mockImplementation(() => ({
-        send: mockSend,
-      }) as any)
+      vi.mocked(SESClient).mockImplementation(function () {
+        return {
+          send: mockSend,
+        }
+      } as any)
       provider = new SESProvider()
     })
 

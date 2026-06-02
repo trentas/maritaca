@@ -3,12 +3,20 @@ import type { Envelope } from '@maritaca/core'
 
 // Mock the AWS SNS client before importing
 vi.mock('@aws-sdk/client-sns', () => {
-  const SNSClient = vi.fn().mockImplementation(() => ({
-    send: vi.fn(),
-  }))
-  const PublishCommand = vi.fn().mockImplementation((input) => ({ input }))
-  const CreatePlatformEndpointCommand = vi.fn().mockImplementation((input) => ({ input }))
-  const ListPlatformApplicationsCommand = vi.fn().mockImplementation((input) => ({ input }))
+  const SNSClient = vi.fn().mockImplementation(function () {
+    return {
+      send: vi.fn(),
+    }
+  })
+  const PublishCommand = vi.fn().mockImplementation(function (input) {
+    return { input }
+  })
+  const CreatePlatformEndpointCommand = vi.fn().mockImplementation(function (input) {
+    return { input }
+  })
+  const ListPlatformApplicationsCommand = vi.fn().mockImplementation(function (input) {
+    return { input }
+  })
   
   return {
     SNSClient,
@@ -166,9 +174,11 @@ describe('SnsPushProvider', () => {
 
     beforeEach(() => {
       mockSend = vi.fn()
-      vi.mocked(SNSClient).mockImplementation(() => ({
-        send: mockSend,
-      }) as any)
+      vi.mocked(SNSClient).mockImplementation(function () {
+        return {
+          send: mockSend,
+        }
+      } as any)
       provider = new SnsPushProvider()
     })
 
@@ -289,9 +299,11 @@ describe('SnsPushProvider', () => {
 
     beforeEach(() => {
       mockSend = vi.fn()
-      vi.mocked(SNSClient).mockImplementation(() => ({
-        send: mockSend,
-      }) as any)
+      vi.mocked(SNSClient).mockImplementation(function () {
+        return {
+          send: mockSend,
+        }
+      } as any)
       provider = new SnsPushProvider()
     })
 

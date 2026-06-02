@@ -6,16 +6,18 @@ vi.mock('twilio', () => {
   const mockCreate = vi.fn()
   const mockFetch = vi.fn()
   
-  const Twilio = vi.fn().mockImplementation(() => ({
-    messages: {
-      create: mockCreate,
-    },
-    api: {
-      accounts: vi.fn().mockReturnValue({
-        fetch: mockFetch,
-      }),
-    },
-  }))
+  const Twilio = vi.fn().mockImplementation(function () {
+    return {
+      messages: {
+        create: mockCreate,
+      },
+      api: {
+        accounts: vi.fn().mockReturnValue({
+          fetch: mockFetch,
+        }),
+      },
+    }
+  })
   
   return {
     Twilio,

@@ -4,7 +4,7 @@ import { FailoverEmailProvider } from '../../../providers/email/failover.js'
 
 const mockResendSend = vi.fn()
 vi.mock('resend', () => ({
-  Resend: vi.fn().mockImplementation(() => ({ emails: { send: mockResendSend } })),
+  Resend: vi.fn().mockImplementation(function () { return { emails: { send: mockResendSend } } }),
 }))
 
 const mockMandrillSend = vi.fn()

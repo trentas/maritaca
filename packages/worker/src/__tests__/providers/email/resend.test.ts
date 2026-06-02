@@ -4,11 +4,13 @@ import type { Envelope } from '@maritaca/core'
 // Mock the resend module before importing ResendProvider
 vi.mock('resend', () => {
   return {
-    Resend: vi.fn().mockImplementation(() => ({
-      emails: {
-        send: vi.fn(),
-      },
-    })),
+    Resend: vi.fn().mockImplementation(function () {
+      return {
+        emails: {
+          send: vi.fn(),
+        },
+      }
+    }),
   }
 })
 
@@ -148,9 +150,11 @@ describe('ResendProvider', () => {
 
     beforeEach(() => {
       mockSend = vi.fn()
-      vi.mocked(Resend).mockImplementation(() => ({
-        emails: { send: mockSend },
-      }) as any)
+      vi.mocked(Resend).mockImplementation(function () {
+        return {
+          emails: { send: mockSend },
+        }
+      } as any)
       provider = new ResendProvider()
     })
 
