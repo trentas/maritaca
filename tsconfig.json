@@ -3,6 +3,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "lib": ["ES2022"],
+    // TypeScript 6.0 errors on deprecated options (e.g. baseUrl, injected by
+    // tsup's DTS builder) unless explicitly silenced. Remove when those are
+    // gone in the TS 7 migration.
+    "ignoreDeprecations": "6.0",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "allowJs": true,
@@ -12,6 +16,11 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    // Explicitly include Node's global types. TypeScript 6 + tsup's DTS
+    // builder no longer auto-discovers @types/node ambient globals
+    // (Buffer, crypto, …), so list it here. Module-scoped @types/* (bcrypt,
+    // web-push, …) are still resolved through their imports.
+    "types": ["node"],
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
     "declarationMap": true,

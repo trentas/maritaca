@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-vi.mock('resend', () => ({ Resend: vi.fn().mockImplementation(() => ({ emails: { send: vi.fn() } })) }))
+vi.mock('resend', () => ({ Resend: vi.fn().mockImplementation(function () { return { emails: { send: vi.fn() } } }) }))
 vi.mock('@mailchimp/mailchimp_transactional', () => ({
   default: vi.fn(() => ({ messages: { send: vi.fn() }, users: { ping: vi.fn() } })),
 }))
 vi.mock('@aws-sdk/client-ses', () => ({
   default: {
-    SESClient: vi.fn(() => ({ send: vi.fn() })),
+    SESClient: vi.fn(function () { return { send: vi.fn() } }),
     SendEmailCommand: vi.fn(),
     GetAccountSendingEnabledCommand: vi.fn(),
   },

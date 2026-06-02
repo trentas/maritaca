@@ -3,11 +3,17 @@ import type { Envelope } from '@maritaca/core'
 
 // Mock the AWS SNS client before importing
 vi.mock('@aws-sdk/client-sns', () => {
-  const SNSClient = vi.fn().mockImplementation(() => ({
-    send: vi.fn(),
-  }))
-  const PublishCommand = vi.fn().mockImplementation((input) => ({ input }))
-  const GetSMSAttributesCommand = vi.fn().mockImplementation((input) => ({ input }))
+  const SNSClient = vi.fn().mockImplementation(function () {
+    return {
+      send: vi.fn(),
+    }
+  })
+  const PublishCommand = vi.fn().mockImplementation(function (input) {
+    return { input }
+  })
+  const GetSMSAttributesCommand = vi.fn().mockImplementation(function (input) {
+    return { input }
+  })
   
   return {
     SNSClient,
@@ -256,9 +262,11 @@ describe('SnsSmsProvider', () => {
 
     beforeEach(() => {
       mockSend = vi.fn()
-      vi.mocked(SNSClient).mockImplementation(() => ({
-        send: mockSend,
-      }) as any)
+      vi.mocked(SNSClient).mockImplementation(function () {
+        return {
+          send: mockSend,
+        }
+      } as any)
       provider = new SnsSmsProvider()
     })
 
@@ -414,9 +422,11 @@ describe('SnsSmsProvider', () => {
 
     beforeEach(() => {
       mockSend = vi.fn()
-      vi.mocked(SNSClient).mockImplementation(() => ({
-        send: mockSend,
-      }) as any)
+      vi.mocked(SNSClient).mockImplementation(function () {
+        return {
+          send: mockSend,
+        }
+      } as any)
       provider = new SnsSmsProvider()
     })
 
