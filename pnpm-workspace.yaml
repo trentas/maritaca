@@ -1,5 +1,11 @@
 packages:
   - 'packages/*'
+# Unify ioredis to the version bullmq pins exactly (5.10.1) so the `Redis`
+# type imported in our code matches the one bullmq's QueueOptions expects.
+# Without this, ^5.10.1 resolves to 5.11.0 for our direct deps while bullmq
+# keeps 5.10.1, producing two distinct `Redis` types and a type error.
+overrides:
+  ioredis: 5.10.1
 allowBuilds:
   bcrypt: true
   esbuild: true
