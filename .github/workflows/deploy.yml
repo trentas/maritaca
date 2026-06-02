@@ -29,7 +29,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -45,7 +45,7 @@ jobs:
           fi
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -53,7 +53,7 @@ jobs:
 
       - name: Extract metadata for API
         id: meta-api
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-api
           tags: |
@@ -76,7 +76,7 @@ jobs:
 
       - name: Extract metadata for Worker
         id: meta-worker
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-worker
           tags: |
@@ -96,7 +96,7 @@ jobs:
 
       - name: Extract metadata for Migrate
         id: meta-migrate
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-migrate
           tags: |
@@ -122,7 +122,7 @@ jobs:
       REGISTRY: ghcr.io
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Generate production .env
         env:
@@ -140,6 +140,7 @@ jobs:
           OTEL_TRACES_SAMPLER: ${{ vars.OTEL_TRACES_SAMPLER }}
           OTEL_TRACES_SAMPLER_ARG: ${{ vars.OTEL_TRACES_SAMPLER_ARG }}
           EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER }}
+          EMAIL_PROVIDERS: ${{ vars.EMAIL_PROVIDERS }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
           SMS_PROVIDER: ${{ vars.SMS_PROVIDER }}
@@ -161,6 +162,7 @@ jobs:
           REDIS_URL: ${{ secrets.REDIS_URL }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
+          MANDRILL_API_KEY: ${{ secrets.MANDRILL_API_KEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -174,7 +176,7 @@ jobs:
           AUDIT_ENCRYPTION_KEY: ${{ secrets.AUDIT_ENCRYPTION_KEY }}
           INTEGRATION_ENCRYPTION_KEY: ${{ secrets.INTEGRATION_ENCRYPTION_KEY }}
         run: |
-          APP_KEYS="PORT HOST LOG_LEVEL NODE_ENV RATE_LIMIT_MAX RATE_LIMIT_WINDOW_MS OTEL_SERVICE_NAME OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_LOGS_ENDPOINT OTEL_EXPORTER_OTLP_INSECURE OTEL_TRACES_SAMPLER OTEL_TRACES_SAMPLER_ARG EMAIL_PROVIDER AWS_REGION AWS_DEFAULT_REGION SMS_PROVIDER PUSH_PROVIDER SNS_APNS_PLATFORM_ARN SNS_APNS_SANDBOX_PLATFORM_ARN SNS_GCM_PLATFORM_ARN WEB_PROVIDER VAPID_PUBLIC_KEY VAPID_SUBJECT TWILIO_SMS_FROM TWILIO_WHATSAPP_FROM AUDIT_HASH_SUBJECT_IDS AUDIT_RETENTION_MONTHS AUDIT_PARTITION_MONTHS_AHEAD AUDIT_MAINTENANCE_CRON DATABASE_URL REDIS_URL RESEND_API_KEY RESEND_WEBHOOK_SECRET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SLACK_BOT_TOKEN SLACK_CLIENT_ID SLACK_SIGNING_SECRET SLACK_CLIENT_SECRET VAPID_PRIVATE_KEY TELEGRAM_BOT_TOKEN TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN AUDIT_ENCRYPTION_KEY INTEGRATION_ENCRYPTION_KEY"
+          APP_KEYS="PORT HOST LOG_LEVEL NODE_ENV RATE_LIMIT_MAX RATE_LIMIT_WINDOW_MS OTEL_SERVICE_NAME OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_LOGS_ENDPOINT OTEL_EXPORTER_OTLP_INSECURE OTEL_TRACES_SAMPLER OTEL_TRACES_SAMPLER_ARG EMAIL_PROVIDER EMAIL_PROVIDERS AWS_REGION AWS_DEFAULT_REGION SMS_PROVIDER PUSH_PROVIDER SNS_APNS_PLATFORM_ARN SNS_APNS_SANDBOX_PLATFORM_ARN SNS_GCM_PLATFORM_ARN WEB_PROVIDER VAPID_PUBLIC_KEY VAPID_SUBJECT TWILIO_SMS_FROM TWILIO_WHATSAPP_FROM AUDIT_HASH_SUBJECT_IDS AUDIT_RETENTION_MONTHS AUDIT_PARTITION_MONTHS_AHEAD AUDIT_MAINTENANCE_CRON DATABASE_URL REDIS_URL RESEND_API_KEY RESEND_WEBHOOK_SECRET MANDRILL_API_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SLACK_BOT_TOKEN SLACK_CLIENT_ID SLACK_SIGNING_SECRET SLACK_CLIENT_SECRET VAPID_PRIVATE_KEY TELEGRAM_BOT_TOKEN TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN AUDIT_ENCRYPTION_KEY INTEGRATION_ENCRYPTION_KEY"
           rm -f .env.production
           for key in $APP_KEYS; do
             val="${!key}"
@@ -185,7 +187,7 @@ jobs:
 
       # scp-action "target" is a directory; files keep their names. Use DEPLOY_PATH only.
       - name: Prepare deploy path on VPS
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ vars.SSH_HOST }}
           username: ${{ vars.SSH_USER }}
@@ -197,7 +199,7 @@ jobs:
       - name: Copy .env to VPS
         run: cp .env.production .env
       - name: SCP .env to VPS
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ vars.SSH_HOST }}
           username: ${{ vars.SSH_USER }}
@@ -206,7 +208,7 @@ jobs:
           target: "${{ vars.DEPLOY_PATH }}"
 
       - name: Copy docker-compose.prod.yml to VPS
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ vars.SSH_HOST }}
           username: ${{ vars.SSH_USER }}
@@ -215,7 +217,7 @@ jobs:
           target: "${{ vars.DEPLOY_PATH }}"
 
       - name: Deploy on VPS
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         env:
           API_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-api:sha-${{ github.sha }}
           WORKER_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-worker:sha-${{ github.sha }}

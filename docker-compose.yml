@@ -77,7 +77,9 @@ services:
       REDIS_URL: redis://redis:6379
       # Email (default: mock)
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-mock}
+      EMAIL_PROVIDERS: ${EMAIL_PROVIDERS:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MANDRILL_API_KEY: ${MANDRILL_API_KEY:-}
       # AWS (SES, SNS)
       AWS_REGION: ${AWS_REGION:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
