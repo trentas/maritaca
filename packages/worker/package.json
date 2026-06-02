@@ -15,18 +15,18 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@appsignal/opentelemetry-instrumentation-bullmq": "^0.7.0",
+    "@appsignal/opentelemetry-instrumentation-bullmq": "^0.8.0",
     "@aws-sdk/client-ses": "^3.1045.0",
     "@aws-sdk/client-sns": "^3.1045.0",
     "@maritaca/core": "workspace:*",
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/exporter-metrics-otlp-http": "^0.57.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
-    "@opentelemetry/instrumentation-http": "^0.57.0",
-    "@opentelemetry/instrumentation-ioredis": "^0.58.0",
-    "@opentelemetry/resources": "^1.28.0",
-    "@opentelemetry/sdk-metrics": "^1.27.0",
-    "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.217.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.217.0",
+    "@opentelemetry/instrumentation-http": "^0.217.0",
+    "@opentelemetry/instrumentation-ioredis": "^0.65.0",
+    "@opentelemetry/resources": "^2.0.0",
+    "@opentelemetry/sdk-metrics": "^2.0.0",
+    "@opentelemetry/sdk-node": "^0.217.0",
     "@paralleldrive/cuid2": "^2.2.2",
     "@slack/types": "^2.21.1",
     "@slack/web-api": "^7.15.2",
@@ -39,7 +39,7 @@
     "resend": "^6.12.3",
     "twilio": "^6.0.2",
     "web-push": "^3.6.7",
-    "@opentelemetry/instrumentation-pg": "^0.51.0"
+    "@opentelemetry/instrumentation-pg": "^0.69.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
