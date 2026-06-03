@@ -1,7 +1,7 @@
 FROM node:26-alpine AS base
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@11.1.1 --activate
+RUN npm install -g pnpm@11.1.1
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ ARG APP_VERSION=""
 ENV COMMIT_SHA=${COMMIT_SHA}
 ENV APP_VERSION=${APP_VERSION}
 
-RUN corepack enable && corepack prepare pnpm@11.1.1 --activate
+RUN npm install -g pnpm@11.1.1
 
 WORKDIR /app
 
