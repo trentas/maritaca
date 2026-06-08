@@ -29,9 +29,9 @@
   },
   "devDependencies": {
     "@opentelemetry/api": "^1.9.1",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.217.0",
-    "@opentelemetry/resources": "^2.0.0",
-    "@opentelemetry/sdk-node": "^0.217.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
+    "@opentelemetry/resources": "^2.7.1",
+    "@opentelemetry/sdk-node": "^0.218.0",
     "@types/node": "^22.0.0",
     "turbo": "^2.9.14",
     "typescript": "^6.0.3",
