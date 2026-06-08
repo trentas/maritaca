@@ -37,7 +37,7 @@
     "pino-opentelemetry-transport": "^2.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^25.9.2",
     "tsup": "^8.0.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6",
