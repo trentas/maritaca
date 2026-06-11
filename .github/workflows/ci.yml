@@ -23,6 +23,11 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Run JavaScript actions (e.g. docker/setup-buildx-action, docker/build-push-action)
+  # on Node.js 24 LTS instead of the deprecated Node.js 20 bundled runtime.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-test:
     name: typecheck · test · build
