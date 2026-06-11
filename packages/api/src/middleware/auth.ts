@@ -44,6 +44,11 @@ export function createAuthOnRequestHandler(): (request: FastifyRequest, reply: i
     if (request.url.startsWith('/v1/integrations/slack/callback')) {
       return
     }
+    // Admin routes use a separate ADMIN_API_KEY credential, enforced by the
+    // admin routes plugin's own onRequest hook (see middleware/adminAuth.ts).
+    if (request.url.startsWith('/v1/admin/')) {
+      return
+    }
 
     const authHeader = request.headers.authorization
 

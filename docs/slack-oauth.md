@@ -2,6 +2,19 @@
 
 Maritaca supports per-project Slack integrations via OAuth. Each project can connect its own Slack workspace — the platform handles the OAuth flow, encrypts and stores the bot token, and uses it automatically when sending messages.
 
+> **One project per tenant.** A Slack integration is scoped per `projectId`
+> (`UNIQUE(project_id, channel, provider)` → exactly one active Slack workspace
+> per project). If you are a **multi-tenant consumer** (a SaaS whose own
+> customers each need their own Slack workspace), authenticating all of them
+> with a single Maritaca API key collapses them into one project — the next
+> tenant's OAuth **overwrites** the previous workspace token. The
+> architecturally-aligned fix is **one Maritaca project / API key per downstream
+> tenant**: provision a key per tenant via `pnpm create-api-key <key> <tenant-id>`
+> or, at runtime, the admin API (`POST /v1/admin/api-keys` — see the
+> [README](../README.md#admin-api--provisioning-api-keys) and
+> [API spec](./MARITACA_API_SPEC.md#admin-api)), then run this OAuth flow with
+> each tenant's own key so every tenant gets an isolated Slack integration.
+
 ## Prerequisites
 
 - A running Maritaca instance (API + Worker + Postgres)
