@@ -194,6 +194,78 @@ Health check (no authentication). Used for readiness/liveness.
 }
 ```
 
+## Admin API
+
+Provisioning endpoints to mint project-scoped API keys at runtime — the HTTP
+equivalent of the `create-api-key` CLI. Intended for multi-tenant consumers that
+create **one Maritaca project / API key per downstream tenant** at onboarding.
+
+Gated behind a dedicated `ADMIN_API_KEY` bearer credential, **distinct from
+project API keys**, so a normal project key cannot create or revoke keys:
+
+```
+Authorization: Bearer <ADMIN_API_KEY>
+```
+
+- `503 Service Unavailable` when `ADMIN_API_KEY` is not configured.
+- `401 Unauthorized` when the Authorization header is missing or malformed.
+- `403 Forbidden` when a bearer token is present but is not the admin key
+  (e.g. a project API key).
+
+### POST /v1/admin/api-keys
+
+Create an API key bound to a project. The plaintext key is returned **exactly
+once** and is never retrievable again (only a bcrypt hash + lookup prefix are stored).
+
+**Body**
+
+```json
+{ "projectId": "tenant-acme" }
+```
+
+**Success response**: `201`
+
+```json
+{
+  "id": "string",
+  "projectId": "string",
+  "apiKey": "maritaca_…",
+  "keyPrefix": "string (16 hex chars)",
+  "createdAt": "string ISO 8601"
+}
+```
+
+- `400 Bad Request` when `projectId` is missing or empty.
+
+### GET /v1/admin/api-keys?projectId=…
+
+List a project's API keys (metadata only — the secret is never returned).
+
+**Success response**: `200`
+
+```json
+{
+  "projectId": "string",
+  "apiKeys": [
+    { "id": "string", "projectId": "string", "keyPrefix": "string", "createdAt": "string ISO 8601" }
+  ]
+}
+```
+
+- `400 Bad Request` when the `projectId` query parameter is missing.
+
+### DELETE /v1/admin/api-keys/:id
+
+Revoke (delete) an API key by id.
+
+**Success response**: `200`
+
+```json
+{ "status": "revoked", "id": "string" }
+```
+
+- `404 Not Found` when no key matches the id.
+
 ## Rate limiting
 
 - Applied by `projectId` (authenticated requests) or by IP (when not authenticated).

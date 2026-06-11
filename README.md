@@ -378,6 +378,44 @@ Get message status and delivery events.
 
 Health check endpoint for load balancers.
 
+### Admin API — provisioning API keys
+
+Admin-only endpoints to mint project-scoped API keys at runtime (the automatable
+equivalent of `pnpm create-api-key`). Useful for multi-tenant consumers that
+provision **one Maritaca project / API key per downstream tenant** at onboarding
+— the architecturally-aligned way to isolate per-tenant integrations such as
+Slack (see [docs/slack-oauth.md](./docs/slack-oauth.md)).
+
+Gated behind a dedicated `ADMIN_API_KEY` bearer credential, distinct from
+project API keys, so a normal project key cannot create or revoke keys. When
+`ADMIN_API_KEY` is unset, every `/v1/admin/*` request is rejected with `503`.
+
+```bash
+# Create a key bound to a project — returns the plaintext key exactly once
+curl -X POST http://localhost:7377/v1/admin/api-keys \
+  -H "Authorization: Bearer $ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "projectId": "tenant-acme" }'
+# → 201 { "id", "projectId", "apiKey", "keyPrefix", "createdAt" }
+
+# List keys for a project (metadata only, never the secret)
+curl "http://localhost:7377/v1/admin/api-keys?projectId=tenant-acme" \
+  -H "Authorization: Bearer $ADMIN_API_KEY"
+
+# Revoke a key by id
+curl -X DELETE http://localhost:7377/v1/admin/api-keys/<id> \
+  -H "Authorization: Bearer $ADMIN_API_KEY"
+```
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /v1/admin/api-keys` | Create a key for `projectId`; returns the plaintext key once |
+| `GET /v1/admin/api-keys?projectId=…` | List a project's keys (no secret) |
+| `DELETE /v1/admin/api-keys/:id` | Revoke a key |
+
+Requests without the admin credential get `401` (missing/invalid header) or
+`403` (a non-admin bearer token, e.g. a project key).
+
 ## Compliance (GDPR/LGPD)
 
 Maritaca includes built-in compliance features:
@@ -442,6 +480,7 @@ All configuration is done via environment variables. See [.env.example](./.env.e
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `REDIS_URL` | Yes | Redis connection string |
 | `AUDIT_ENCRYPTION_KEY` | Production | PII encryption key (AES-256) |
+| `ADMIN_API_KEY` | For admin API | Bearer credential for `/v1/admin/*` provisioning routes |
 
 ### Email
 

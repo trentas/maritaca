@@ -13,6 +13,7 @@ import {
 import { messageRoutes } from './routes/messages.js'
 import { resendWebhookRoutes } from './routes/webhooks/resend.js'
 import { slackIntegrationRoutes } from './routes/integrations/slack.js'
+import { adminApiKeyRoutes } from './routes/admin/api-keys.js'
 import { createAuthOnRequestHandler } from './middleware/auth.js'
 import { createQueue } from './services/queue.js'
 
@@ -140,6 +141,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   await server.register(messageRoutes)
   await server.register(resendWebhookRoutes)
   await server.register(slackIntegrationRoutes)
+  await server.register(adminApiKeyRoutes)
 
   // Track health status for metrics
   let currentHealthStatus = 1 // 1 = healthy, 0 = degraded
