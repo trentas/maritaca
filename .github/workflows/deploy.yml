@@ -64,7 +64,7 @@ jobs:
             type=sha,prefix=sha-,format=long
 
       - name: Build and push API image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.api
@@ -87,7 +87,7 @@ jobs:
             type=sha,prefix=sha-,format=long
 
       - name: Build and push Worker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.worker
@@ -107,7 +107,7 @@ jobs:
             type=sha,prefix=sha-,format=long
 
       - name: Build and push Migrate image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.migrate
