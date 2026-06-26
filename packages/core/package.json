@@ -43,7 +43,7 @@
     "vitest": "^4.1.9",
     "@vitest/coverage-v8": "^4.1.9",
     "drizzle-kit": "^0.31.10",
-    "dotenv-cli": "^7.4.2",
+    "dotenv-cli": "^11.0.0",
     "pino-pretty": "^13.1.3"
   }
 }
