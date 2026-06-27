@@ -1,6 +1,8 @@
 import { FastifyPluginAsync } from 'fastify'
 import { createHmac, timingSafeEqual } from 'crypto'
+import { WebClient } from '@slack/web-api'
 import { IntegrationService } from '@maritaca/core/integrations'
+import { resolveChannelByName, joinChannel, SlackChannelError } from './slackChannels.js'
 
 /**
  * State token helpers using HMAC-SHA256
@@ -81,7 +83,7 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
 
     const params = new URLSearchParams({
       client_id: clientId,
-      scope: 'chat:write,chat:write.customize,users:read,users:read.email',
+      scope: 'chat:write,chat:write.customize,users:read,users:read.email,channels:read,groups:read,channels:join',
       redirect_uri: callbackUrl,
       state,
     })
@@ -256,5 +258,92 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
 
     request.log.info({ projectId }, 'Slack integration revoked')
     return reply.send({ status: 'revoked' })
+  })
+
+  /**
+   * Build a Slack WebClient authenticated with the project's stored bot token.
+   * Replies (and returns null) on the failure cases the caller can't recover
+   * from: no projectId (401), encryption key not configured (500), or no active
+   * Slack integration for the project (400).
+   */
+  async function clientForProject(request: any, reply: any): Promise<WebClient | null> {
+    if (!encryptionKey) {
+      reply.code(500).send({ error: 'Configuration Error', message: 'INTEGRATION_ENCRYPTION_KEY not configured' })
+      return null
+    }
+
+    const projectId = request.projectId
+    if (!projectId) {
+      reply.code(401).send({ error: 'Unauthorized', message: 'Project ID not found in request' })
+      return null
+    }
+
+    const integrationService = new IntegrationService(request.server.db, encryptionKey)
+    const credentials = await integrationService.getCredentials(projectId, 'slack')
+    if (!credentials?.botToken) {
+      reply.code(400).send({ error: 'Slack Not Connected', message: 'No active Slack integration for this project. Connect Slack first.' })
+      return null
+    }
+
+    return new WebClient(credentials.botToken)
+  }
+
+  /**
+   * POST /v1/integrations/slack/channels/resolve
+   * Resolve a channel name to its canonical channel ID so callers can persist a
+   * rename-proof identifier. Body: { channelName }
+   */
+  fastify.post<{
+    Body: { channelName?: string }
+  }>('/v1/integrations/slack/channels/resolve', async (request, reply) => {
+    const channelName = request.body?.channelName
+    if (!channelName || typeof channelName !== 'string') {
+      return reply.code(400).send({ error: 'Bad Request', message: 'channelName is required' })
+    }
+
+    const client = await clientForProject(request, reply)
+    if (!client) return reply
+
+    try {
+      const resolved = await resolveChannelByName(client, channelName)
+      if (!resolved) {
+        return reply.code(404).send({ error: 'Not Found', message: `Channel not found: ${channelName}` })
+      }
+      return reply.send(resolved)
+    } catch (err) {
+      if (err instanceof SlackChannelError) {
+        return reply.code(err.status).send({ error: err.code, message: err.message })
+      }
+      request.log.error({ err }, 'Slack channel resolve failed')
+      return reply.code(502).send({ error: 'slack_api_error', message: 'Failed to resolve Slack channel' })
+    }
+  })
+
+  /**
+   * POST /v1/integrations/slack/channels/:channelId/join
+   * Ask the bot to join a public channel (idempotent). Private channels reject
+   * with 403 — they require a manual /invite.
+   */
+  fastify.post<{
+    Params: { channelId: string }
+  }>('/v1/integrations/slack/channels/:channelId/join', async (request, reply) => {
+    const { channelId } = request.params
+    if (!channelId) {
+      return reply.code(400).send({ error: 'Bad Request', message: 'channelId is required' })
+    }
+
+    const client = await clientForProject(request, reply)
+    if (!client) return reply
+
+    try {
+      const result = await joinChannel(client, channelId)
+      return reply.send(result)
+    } catch (err) {
+      if (err instanceof SlackChannelError) {
+        return reply.code(err.status).send({ error: err.code, message: err.message })
+      }
+      request.log.error({ err }, 'Slack channel join failed')
+      return reply.code(502).send({ error: 'slack_api_error', message: 'Failed to join Slack channel' })
+    }
   })
 }

@@ -257,9 +257,23 @@ Send messages to users or channels with multiple recipient options:
 | `channelName` | `general` | Post to channel by name |
 | `email` | `user@company.com` | Lookup user by email, send DM |
 
-Features: LRU cache for email lookups, automatic retry with backoff, Slack blocks support.
+Features: LRU cache for email lookups, automatic retry with backoff, Slack blocks support, transparent auto-join of public channels on `not_in_channel`.
 
-Required: `SLACK_BOT_TOKEN` with scopes `chat:write`, `users:read.email`
+Required: `SLACK_BOT_TOKEN` with scopes `chat:write`, `users:read.email` (single-tenant), or per-project OAuth (multi-tenant — see [docs/slack-oauth.md](./docs/slack-oauth.md)).
+
+**Channel setup endpoints** (resolve a name to a rename-proof ID, then join):
+
+```bash
+# Resolve channel name → ID
+POST /v1/integrations/slack/channels/resolve   { "channelName": "alerts" }
+# → { "channelId": "C08…", "channelName": "alerts", "isPrivate": false, "isMember": true }
+
+# Join a public channel (idempotent)
+POST /v1/integrations/slack/channels/:channelId/join
+# → { "channelId": "C08…", "joined": true, "alreadyMember": false }
+```
+
+Persist the `channelId` and deliver by ID to stay immune to channel renames. Requires the `channels:read`, `groups:read` and `channels:join` scopes. See [docs/slack-oauth.md](./docs/slack-oauth.md#resolving-and-joining-channels-recommended-setup-flow).
 
 ### SMS
 
