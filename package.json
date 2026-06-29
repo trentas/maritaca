@@ -39,8 +39,8 @@
     "@vitest/coverage-v8": "^4.1.9",
     "vite": "^8.0.16",
     "tsx": "^4.22.2",
-    "bcrypt": "^5.1.1",
-    "@types/bcrypt": "^5.0.2",
+    "bcrypt": "^6.0.0",
+    "@types/bcrypt": "^6.0.0",
     "dotenv-cli": "^11.0.0",
     "@paralleldrive/cuid2": "^2.2.2"
   },
