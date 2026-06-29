@@ -28,7 +28,7 @@
     "db:push": "dotenv -e ../../.env -- drizzle-kit push"
   },
   "dependencies": {
-    "zod": "^3.23.0",
+    "zod": "^4.4.3",
     "drizzle-orm": "^0.45.2",
     "@paralleldrive/cuid2": "^2.2.2",
     "postgres": "^3.4.9",
