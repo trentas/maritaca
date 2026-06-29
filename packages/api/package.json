@@ -39,7 +39,7 @@
     "svix": "^1.96.0"
   },
   "devDependencies": {
-    "@types/node": "^25.9.3",
+    "@types/node": "^26.0.1",
     "@types/bcrypt": "^5.0.2",
     "tsup": "^8.0.0",
     "typescript": "^6.0.3",
