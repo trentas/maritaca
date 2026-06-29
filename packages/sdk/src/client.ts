@@ -1,5 +1,5 @@
 import { MessagesAPI } from './api/messages.js'
-import type { Envelope } from '@maritaca/core'
+import { SlackAPI } from './api/slack.js'
 
 export interface MaritacaOptions {
   /** API key for authentication */
@@ -13,6 +13,7 @@ export interface MaritacaOptions {
  */
 export class Maritaca {
   public messages: MessagesAPI
+  public slack: SlackAPI
 
   constructor(options: MaritacaOptions) {
     if (!options.apiKey) {
@@ -27,6 +28,7 @@ export class Maritaca {
     const baseUrl = options.baseUrl.replace(/\/$/, '')
 
     this.messages = new MessagesAPI(baseUrl, options.apiKey)
+    this.slack = new SlackAPI(baseUrl, options.apiKey)
   }
 }
 

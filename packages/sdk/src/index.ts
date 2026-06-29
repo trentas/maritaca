@@ -7,6 +7,11 @@ export type {
   SendMessageResponse,
   GetMessageResponse,
 } from './api/messages.js'
+export { SlackAPI } from './api/slack.js'
+export type {
+  ResolveChannelResponse,
+  JoinChannelResponse,
+} from './api/slack.js'
 
 // Errors
 export {

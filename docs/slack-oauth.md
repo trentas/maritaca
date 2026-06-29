@@ -42,6 +42,14 @@ In the Slack App dashboard, go to **OAuth & Permissions**:
    - `chat:write.customize` — customize bot name and icon per message
    - `users:read` — required by `users:read.email`
    - `users:read.email` — resolve users by email
+   - `channels:read` — list/look up public channels (channel name → ID resolution)
+   - `groups:read` — same for private channels the bot belongs to
+   - `channels:join` — let the bot join public channels (auto-join + join endpoint)
+
+   > **Re-consent required.** These last three scopes were added after the
+   > initial release. Workspaces installed before then must re-run the OAuth
+   > flow (`GET /authorize`) to grant them; otherwise channel resolve/join calls
+   > fail with `missing_scope`.
 
 ### Local development with ngrok
 
@@ -213,6 +221,74 @@ Available overrides:
 | `blocks` | Custom Slack Block Kit blocks | `[{"type": "section", ...}]` |
 
 > **Note:** `iconEmoji` and `iconUrl` are mutually exclusive — if both are set, Slack uses `iconEmoji`.
+
+### Resolving and joining channels (recommended setup flow)
+
+Delivering by `channelName` is fragile: Slack name matching is case-sensitive,
+renaming the channel silently breaks delivery, and a bot that was never invited
+to a channel produces a `201 Accepted` whose message never arrives (the failure
+only surfaces later as an `attempt.failed` event). Two endpoints make channel
+setup explicit and rename-proof.
+
+#### Resolve a channel name to its ID
+
+```bash
+curl -X POST "http://localhost:7377/v1/integrations/slack/channels/resolve" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "channelName": "alertas-custos-datadog" }'
+```
+
+```json
+{
+  "channelId": "C08XXXXXXXX",
+  "channelName": "alertas-custos-datadog",
+  "isPrivate": false,
+  "isMember": true
+}
+```
+
+| Status | Meaning |
+|--------|---------|
+| `200` | Resolved — persist `channelId` and deliver by ID from now on |
+| `404` | Channel not found (or a private channel the bot isn't in) |
+| `403` | `missing_scope` — re-run OAuth to grant `channels:read` / `groups:read` |
+| `400` | Missing `channelName`, or the project has no Slack integration |
+
+#### Join a public channel
+
+```bash
+curl -X POST "http://localhost:7377/v1/integrations/slack/channels/C08XXXXXXXX/join" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```json
+{ "channelId": "C08XXXXXXXX", "channelName": "alertas-custos-datadog", "joined": true, "alreadyMember": false }
+```
+
+| Status | Meaning |
+|--------|---------|
+| `200` | Bot joined (idempotent — also `200` if already a member) |
+| `403` | Channel is private — invite the bot manually with `/invite` |
+| `404` | Channel not found |
+
+> **Recommended flow:** at channel-configuration time, call **resolve** to get
+> the immutable `C…` ID, then **join** (for public channels) so the bot is a
+> member, persist the `channelId`, and always deliver by `channelId`. This is
+> immune to channel renames and avoids the silent "accepted but never delivered"
+> failure.
+
+> **Transparent auto-join.** Independently of the join endpoint, when a message
+> targets a **public channel by ID** and the bot isn't a member, the worker
+> automatically calls `conversations.join` once and retries the send. Private
+> channels can't be auto-joined and still require a manual `/invite`.
+
+#### SDK
+
+```typescript
+const { channelId } = await maritaca.slack.resolveChannel('alertas-custos-datadog')
+await maritaca.slack.joinChannel(channelId) // public channels
+```
 
 ### Step 5 — Revoke integration
 

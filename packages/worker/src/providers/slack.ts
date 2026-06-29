@@ -583,6 +583,7 @@ export class SlackProvider implements Provider {
     display?: { username?: string; iconUrl?: string; iconEmoji?: string },
   ): Promise<WebAPICallResult> {
     let lastError: Error | null = null
+    let joinedOnce = false
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
       try {
@@ -593,6 +594,19 @@ export class SlackProvider implements Provider {
         return await client.chat.postMessage(args)
       } catch (error: any) {
         lastError = error
+
+        // Transparent auto-join: if the bot isn't a member of a public channel,
+        // join it once and retry the send. Private channels reject join, so we
+        // surface the original not_in_channel error for a manual /invite.
+        if (this.isNotInChannelError(error) && !joinedOnce && this.isChannelId(target)) {
+          joinedOnce = true
+          try {
+            await client.conversations.join({ channel: target })
+            continue
+          } catch {
+            throw error
+          }
+        }
 
         // Check if it's a rate limit error (429)
         if (this.isRateLimitError(error)) {
@@ -612,6 +626,21 @@ export class SlackProvider implements Provider {
 
     // Should not reach here, but throw last error if we do
     throw lastError || new Error('Max retries exceeded')
+  }
+
+  /**
+   * Check if the Slack error means the bot isn't a member of the channel.
+   */
+  private isNotInChannelError(error: any): boolean {
+    return error?.data?.error === 'not_in_channel'
+  }
+
+  /**
+   * Whether a resolved target is a Slack channel ID (vs a #name, user ID or DM).
+   * Only channel IDs (prefix "C") can be auto-joined via conversations.join.
+   */
+  private isChannelId(target: string): boolean {
+    return /^C[A-Z0-9]+$/.test(target)
   }
 
   /**
