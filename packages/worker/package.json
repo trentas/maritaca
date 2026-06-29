@@ -27,7 +27,7 @@
     "@opentelemetry/resources": "^2.8.0",
     "@opentelemetry/sdk-metrics": "^2.8.0",
     "@opentelemetry/sdk-node": "^0.219.0",
-    "@paralleldrive/cuid2": "^2.2.2",
+    "@paralleldrive/cuid2": "^3.3.0",
     "@slack/types": "^2.21.1",
     "@slack/web-api": "^7.17.0",
     "bullmq": "^5.79.1",
