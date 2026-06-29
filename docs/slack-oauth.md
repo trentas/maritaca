@@ -158,9 +158,24 @@ Response:
   "active": true,
   "teamName": "Your Workspace",
   "teamId": "T12345678",
-  "installedAt": "2025-01-15T10:30:00.000Z"
+  "installedAt": "2025-01-15T10:30:00.000Z",
+  "scopes": ["chat:write", "chat:write.customize", "users:read", "users:read.email"],
+  "missingScopes": ["channels:read", "groups:read", "channels:join"],
+  "needsReauth": true
 }
 ```
+
+| Field | Meaning |
+|-------|---------|
+| `scopes` | Bot scopes Slack granted to the stored token |
+| `missingScopes` | Scopes Maritaca now requests that this token lacks |
+| `needsReauth` | `true` when `missingScopes` is non-empty — re-run `/authorize` to grant them |
+
+> **Detecting re-consent.** Integrations installed before the channel
+> resolve/join scopes were added report `needsReauth: true`. Use this to show a
+> "reconnect Slack" prompt and send the tenant back through `GET /authorize`
+> (the new token overwrites the old one, keeping the same `projectId`). Channel
+> resolve/join calls fail with `missing_scope` until then.
 
 ### Step 4 — Send a message
 

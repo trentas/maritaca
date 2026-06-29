@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { WebClient } from '@slack/web-api'
 import { IntegrationService } from '@maritaca/core/integrations'
 import { resolveChannelByName, joinChannel, SlackChannelError } from './slackChannels.js'
+import { SLACK_OAUTH_SCOPE_STRING, parseScopes, missingScopes } from './slackScopes.js'
 
 /**
  * State token helpers using HMAC-SHA256
@@ -83,7 +84,7 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
 
     const params = new URLSearchParams({
       client_id: clientId,
-      scope: 'chat:write,chat:write.customize,users:read,users:read.email,channels:read,groups:read,channels:join',
+      scope: SLACK_OAUTH_SCOPE_STRING,
       redirect_uri: callbackUrl,
       state,
     })
@@ -213,11 +214,20 @@ export const slackIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
     const integrationService = new IntegrationService(request.server.db, encryptionKey)
     const status = await integrationService.getStatus(projectId, 'slack')
 
+    // Surface granted vs required scopes so callers can detect integrations that
+    // predate newer scopes (channels:read/groups:read/channels:join) and prompt
+    // the tenant to re-consent before relying on channel resolve/join.
+    const grantedScope = (status.metadata as any)?.scope as string | undefined
+    const missing = status.active ? missingScopes(grantedScope) : []
+
     return reply.send({
       active: status.active,
       teamName: (status.metadata as any)?.teamName,
       teamId: (status.metadata as any)?.teamId,
       installedAt: status.installedAt,
+      scopes: status.active ? parseScopes(grantedScope) : [],
+      missingScopes: missing,
+      needsReauth: missing.length > 0,
     })
   })
 
