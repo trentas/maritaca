@@ -176,7 +176,7 @@ jobs:
 
       # Login transitório no GHCR: o host usa o GITHUB_TOKEN do run e faz logout
       # no trap, sem PAT persistente no servidor.
-      - name: Atualizar TAG, migrar e subir
+      - name: Atualizar TAG e puxar imagens
         run: |
           ssh ${{ vars.DEPLOY_HOST }} \
             GH_ACTOR="${{ github.actor }}" \
@@ -201,11 +201,30 @@ jobs:
           trap 'docker logout ghcr.io >/dev/null 2>&1' EXIT
 
           docker compose pull -q
-
-          # Migrations antes de subir a app, para nenhum processo novo encostar
-          # num schema velho. O serviço migrate depende do postgres saudável.
           docker compose up -d postgres
-          docker compose run --rm migrate
+          EOS
+
+      # Passo separado, com o comando como ARGUMENTO do ssh e não pela stdin.
+      # `docker compose run` consome a stdin, e num `bash -s <<EOS` isso engole
+      # o resto do script: no primeiro deploy para a produtos-01 (run
+      # 31322818906) o migrate rodou e o `up -d` seguinte simplesmente sumiu,
+      # sem erro nenhum — a api e o worker ficaram na imagem antiga e o job
+      # terminou verde. O `-T` e o `</dev/null` são cinto e suspensório.
+      #
+      # Migrations antes de subir a app, para nenhum processo novo encostar num
+      # schema velho.
+      - name: Migrations
+        run: |
+          ssh ${{ vars.DEPLOY_HOST }} \
+            "cd '${{ vars.DEPLOY_PATH }}' && docker compose run --rm -T migrate" < /dev/null
+
+      - name: Subir api e worker
+        run: |
+          ssh ${{ vars.DEPLOY_HOST }} \
+            DEPLOY_PATH="${{ vars.DEPLOY_PATH }}" \
+            bash -s <<'EOS'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
 
           docker compose up -d --remove-orphans
 
@@ -229,6 +248,8 @@ jobs:
           set -uo pipefail
           cd "$DEPLOY_PATH"
           for i in $(seq 1 12); do
+            # </dev/null pelo mesmo motivo do migrate: exec sem isso pode comer
+            # o resto do script e matar o laço de retry na primeira volta.
             if docker compose exec -T api node -e "
               fetch('http://127.0.0.1:7377/health')
                 .then(async (r) => {
@@ -236,7 +257,7 @@ jobs:
                   process.exit(r.ok ? 0 : 1)
                 })
                 .catch((e) => { console.log(String(e)); process.exit(1) })
-            "; then
+            " < /dev/null; then
               echo "Health OK"
               exit 0
             fi
