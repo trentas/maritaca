@@ -47,8 +47,15 @@ jobs:
     outputs:
       tag: sha-${{ github.sha }}
     steps:
+      # fetch-tags: o checkout default é --depth=1 --no-tags, e aí o
+      # `git describe` do passo abaixo não acha nada — o APP_VERSION saía vazio
+      # em todo deploy disparado manualmente, deixando /version respondendo
+      # null. No deploy por tag não aparecia, porque ali a versão vem do ref.
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
