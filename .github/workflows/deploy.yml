@@ -98,7 +98,7 @@ jobs:
             COMMIT_SHA=${{ github.sha }}
             APP_VERSION=${{ steps.app-version.outputs.version }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
 
       - name: Extract metadata for Worker
         id: meta-worker
@@ -121,7 +121,7 @@ jobs:
             COMMIT_SHA=${{ github.sha }}
             APP_VERSION=${{ steps.app-version.outputs.version }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
 
       - name: Extract metadata for Migrate
         id: meta-migrate
@@ -141,7 +141,7 @@ jobs:
           tags: ${{ steps.meta-migrate.outputs.tags }}
           labels: ${{ steps.meta-migrate.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
 
   deploy:
     name: Deploy na produtos-01
