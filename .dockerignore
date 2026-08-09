@@ -1,0 +1,44 @@
+# Sem este arquivo, o `COPY . .` dos Dockerfiles copia o node_modules do host
+# por cima do `pnpm install` que a imagem acabou de fazer. O pnpm detecta o
+# modules dir inconsistente e tenta purgá-lo, o que aborta sem TTY:
+#
+#   ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY
+#
+# No CI não aparecia porque o job de docker build não roda `pnpm install` no
+# runner, então o contexto está limpo — o build só quebrava na máquina de quem
+# tinha acabado de instalar as dependências.
+#
+# Também mantém segredo e histórico fora da imagem, e encolhe o contexto.
+
+# Dependências e artefatos de build — refeitos dentro da imagem
+node_modules
+**/node_modules
+dist
+**/dist
+.turbo
+**/.turbo
+coverage
+**/coverage
+*.tsbuildinfo
+
+# Segredos
+.env
+.env.*
+!.env.example
+
+# Histórico e metadados
+.git
+.github
+.gitignore
+
+# Documentação e assets, que não entram em runtime
+docs
+assets
+*.md
+!README.md
+
+# Local
+.vscode
+.idea
+.DS_Store
+*.log
