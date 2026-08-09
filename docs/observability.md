@@ -93,6 +93,28 @@ Set these in `.env` (or in the container environment) when you want to send tele
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Yes* | OTLP base endpoint, e.g. `http://<collector>:4318`. Used for **traces** and **metrics**. |
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | No | **Logs** endpoint — **explicit opt-in**. If unset, logs go to stdout only; setting `OTEL_EXPORTER_OTLP_ENDPOINT` alone does **not** enable log export (it covers traces and metrics). If you set it, use the full URL including `/v1/logs` (e.g. `http://host.docker.internal:4318/v1/logs`). Read the warning below first. |
 | `OTEL_EXPORTER_OTLP_INSECURE` | No | `true` for HTTP (no TLS). Default: `true`. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | No | Milliseconds between metric export cycles. Default: `60000`. Lower it temporarily (e.g. `5000`) to check whether a collector-side fix took effect without waiting a full minute per attempt. |
+| `OTEL_LOG_LEVEL` | No | Diagnostics from the OTel SDK itself: `none`, `error`, `warn` (default), `info`, `debug`, `verbose`. **Export failures are logged at `error`, so they are visible by default** — see the warning below. `debug` adds the stack trace to those lines. |
+
+> **Export failures used to be silent, and no longer are.** The OTel SDK does
+> not log a failed export on its own: if the collector refuses the POST — 404
+> because that signal has no pipeline, connection refused, wrong port — the
+> process keeps running and says nothing. That is how Maritaca went a full month
+> without a single span reaching SigNoz (the compose pointed at `:4317`, gRPC,
+> while the SDK exports over http/protobuf), and it is the same silence that hid
+> the missing metrics.
+>
+> Both services now install a diagnostics logger before the SDK starts, so a
+> refused export shows up in the normal log stream, in the same JSON shape as
+> every other line:
+>
+> ```json
+> {"level":"error","time":1786281404520,"service":"maritaca-worker","otel":true,
+>  "msg":"PeriodicExportingMetricReader: metrics export failed (error OTLPExporterError: Not Found)"}
+> ```
+>
+> When the collector is healthy this is completely quiet — it costs nothing
+> until something is actually wrong.
 
 \* If `OTEL_EXPORTER_OTLP_ENDPOINT` is not set, traces and metrics are not exported; the app still runs, just without sending telemetry.
 
@@ -157,7 +179,7 @@ Replace `<otlp-collector-service-name>` with the OTEL Collector service name fro
 ## 3. What gets exported
 
 - **Traces:** API HTTP requests, BullMQ jobs (enqueue and process), Redis operations, PostgreSQL queries, and outbound HTTP (e.g. Slack). Services: `maritaca-api`, `maritaca-worker`.
-- **Metrics:** HTTP, Redis, PostgreSQL, Node/OTel metrics (from the instrumentations), plus custom business metrics (see below).
+- **Metrics:** HTTP, Redis and PostgreSQL metrics from the instrumentations; Node.js runtime metrics (`nodejs.eventloop.*`, `v8js.*`) from `@opentelemetry/instrumentation-runtime-node`; plus custom business metrics (see below). Container CPU, memory and network are **not** exported by the app — those come from the host collector's `docker_stats`, so the runtime instrumentation covers only what the process itself can see: event loop lag, GC and heap.
 - **Logs:** Pino logs (API and worker) with `traceId`/`spanId` when a span is active, so you can link logs to traces in your observability platform.
 
 ---
@@ -172,9 +194,20 @@ Maritaca exports custom metrics for monitoring notification delivery performance
 | `maritaca.messages.processing.duration` | Histogram | `channel`, `provider` | Message processing duration in ms |
 | `maritaca.provider.errors` | Counter | `provider`, `error_code` | Provider errors by type |
 | `maritaca.provider.rate_limits` | Counter | `provider` | Rate limit events from providers |
-| `maritaca.queue.jobs` | UpDownCounter | `queue`, `status` | Jobs by queue and status |
+| `maritaca.queue.jobs` | Observable gauge | `queue`, `status` | Jobs by queue and status (`waiting`, `active`, `delayed`, `failed`) |
+| `maritaca.queue.oldest_job.age` | Observable gauge | `queue` | Age in seconds of the oldest job still waiting (`0` when empty) |
 | `maritaca.health.latency` | Histogram | `component` | Health check latency (database, redis) |
 | `maritaca.health.status` | Gauge | - | Overall health (1=healthy, 0=degraded) |
+
+The two queue metrics are read from Redis by the worker at collection time — an
+UpDownCounter would not work here, since jobs are enqueued by the API and
+consumed by the worker and no single process sees every transition.
+
+**`maritaca.queue.oldest_job.age` is the alertable one.** A deep queue that is
+draining is normal; a job sitting untouched for fifteen minutes is an incident,
+and unlike "no spans in the last hour" it says so without depending on there
+being traffic. That distinction matters for a sparse email queue, where silence
+is the normal state.
 
 ### Label Values
 
@@ -429,6 +462,39 @@ If traces and metrics appear but logs don't:
 4. **Batch delay**  
    Logs are sent in batches (e.g. every ~1 s). Wait a few seconds and generate traffic (requests, jobs) to see new log entries.
 
+### Traces appear but metrics don't (or vice versa)
+
+The three signals fail independently: a collector can have a `traces` pipeline
+and no `metrics` one, and then the app exports metrics into a 404 forever. Since
+the app's own configuration is a single base URL, "traces work" is **not**
+evidence that metrics can work.
+
+Check each path separately, from inside the container so name resolution and
+network match what the app sees:
+
+```bash
+docker compose -f docker-compose.prod.yml exec worker pnpm test:otlp
+```
+
+```
+[test-otlp] traces: OK {"url":"http://collector:4318/v1/traces","status":200}
+[test-otlp] metrics: ROTA NÃO ATENDE {"url":"http://collector:4318/v1/metrics","status":404}
+```
+
+A 404 on one path means the collector has no pipeline for that signal — fix it
+on the collector side (section 1.2), not here. Then confirm from the app side by
+setting `OTEL_METRIC_EXPORT_INTERVAL=5000` for a few minutes and watching for the
+export error lines to stop.
+
+Two things that are **not** symptoms of a broken pipeline:
+
+- **A metric with no data points never appears in the backend.** Counters are
+  only exported after they are incremented at least once, so a quiet channel
+  publishes nothing. The queue gauges are the exception: they are observable and
+  report on every cycle, including `0`.
+- **`system.*` metrics are absent by design.** Container CPU, memory and network
+  come from the host collector's `docker_stats`, not from the app.
+
 ### Testing connectivity
 
 Use the `test:otlp` script to validate your OTLP configuration:
@@ -437,7 +503,9 @@ Use the `test:otlp` script to validate your OTLP configuration:
 pnpm test:otlp
 ```
 
-This checks environment variables and tests connectivity to the `/v1/traces` endpoint.
+It prints the resolved environment variables and probes `/v1/traces`,
+`/v1/metrics` and `/v1/logs` separately, exiting non-zero if any of them is
+refused.
 
 ---
 

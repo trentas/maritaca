@@ -17,9 +17,14 @@ import { HttpInstrumentation } from '@opentelemetry/instrumentation-http'
 import { IORedisInstrumentation } from '@opentelemetry/instrumentation-ioredis'
 import { BullMQInstrumentation } from '@appsignal/opentelemetry-instrumentation-bullmq'
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg'
+import { RuntimeNodeInstrumentation } from '@opentelemetry/instrumentation-runtime-node'
 import FastifyOtel from '@fastify/otel'
+import { setupOtelDiagLogging, metricExportIntervalMillis } from './otel-diag.js'
 
 const serviceName = process.env.OTEL_SERVICE_NAME || 'maritaca-api'
+
+// Antes de qualquer coisa: sem isto, falha de export é engolida em silêncio.
+setupOtelDiagLogging(serviceName)
 
 const resource = resourceFromAttributes({
   'service.name': serviceName,
@@ -28,12 +33,14 @@ const resource = resourceFromAttributes({
 
 const otelEndpoint = (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || '').trim()
 const traceExporter = otelEndpoint ? new OTLPTraceExporter() : undefined
-const metricReader = otelEndpoint
-  ? new PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter(),
-      exportIntervalMillis: 60_000,
-    })
-  : undefined
+const metricReaders = otelEndpoint
+  ? [
+      new PeriodicExportingMetricReader({
+        exporter: new OTLPMetricExporter(),
+        exportIntervalMillis: metricExportIntervalMillis(),
+      }),
+    ]
+  : []
 
 const fastifyOtel = new FastifyOtel({
   registerOnInitialization: true,
@@ -43,7 +50,7 @@ const fastifyOtel = new FastifyOtel({
 const sdk = new NodeSDK({
   resource,
   traceExporter,
-  metricReader,
+  metricReaders,
   // Sampling is configured via environment variables:
   // - OTEL_TRACES_SAMPLER (e.g., "parentbased_traceidratio")
   // - OTEL_TRACES_SAMPLER_ARG (e.g., "0.1" for 10% sampling)
@@ -58,11 +65,17 @@ const sdk = new NodeSDK({
     new PgInstrumentation({
       enhancedDatabaseReporting: true,
     }),
+    // Event loop lag, GC e heap do V8. CPU/memória/rede do container já vêm do
+    // docker_stats do otelcol do host; isto aqui é o que só o processo sabe.
+    new RuntimeNodeInstrumentation(),
   ],
 })
 
 async function start() {
   await sdk.start()
+  // Reafirma o logger: com OTEL_LOG_LEVEL definida o NodeSDK instala o
+  // DiagConsoleLogger dele por cima durante o start.
+  setupOtelDiagLogging(serviceName)
 }
 
 function shutdown() {

@@ -1,97 +1,119 @@
 #!/usr/bin/env tsx
 /**
- * Validates OTLP configuration and tests connectivity with an OTLP collector.
+ * Valida a configuração OTLP e testa a conectividade com o coletor, por sinal.
  * Uso: pnpm test:otlp  (ou: dotenv -e .env -- pnpm exec tsx scripts/test-otlp.ts)
  *
- * Verifica:
- * - Variáveis OTEL_EXPORTER_OTLP_* (vazia => SDK usa http://localhost:4318)
- * - Conectividade HTTP POST para /v1/traces
+ * Testa os três caminhos separadamente — /v1/traces, /v1/metrics e /v1/logs —
+ * porque eles falham de forma independente: o coletor pode ter pipeline de
+ * trace e não ter de métrica, e o sdk-node não loga falha de export, então do
+ * lado da app o sintoma é silêncio. Foi exatamente esse o caso da issue #76
+ * (trace chegando, métrica nenhuma) e do bug da porta 4317 antes dele.
+ *
+ * Rode de dentro do container para que a resolução de nome e a rede sejam as
+ * mesmas que a aplicação enxerga:
+ *   docker compose -f docker-compose.prod.yml exec worker pnpm test:otlp
  */
 
 const endpointRaw = process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? ''
-const logsEndpoint = process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ?? ''
+const logsEndpointRaw = process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ?? ''
 const insecure = process.env.OTEL_EXPORTER_OTLP_INSECURE ?? 'true'
 
-// Quando vazio, o SDK OTLP usa o default http://localhost:4318 (especificação OTEL)
-const effectiveBase = endpointRaw && endpointRaw.trim() !== ''
-  ? endpointRaw.replace(/\/$/, '')
-  : 'http://localhost:4318'
+// Vazio => o SDK OTLP usa http://localhost:4318 (spec do OTEL)
+const effectiveBase =
+  endpointRaw && endpointRaw.trim() !== ''
+    ? endpointRaw.trim().replace(/\/$/, '')
+    : 'http://localhost:4318'
 
-const tracesUrl = `${effectiveBase}/v1/traces`
+interface Signal {
+  nome: string
+  url: string
+  observacao?: string
+}
+
+const signals: Signal[] = [
+  { nome: 'traces', url: `${effectiveBase}/v1/traces` },
+  { nome: 'metrics', url: `${effectiveBase}/v1/metrics` },
+  {
+    nome: 'logs',
+    url: logsEndpointRaw.trim() || `${effectiveBase}/v1/logs`,
+    observacao: logsEndpointRaw.trim()
+      ? 'OTEL_EXPORTER_OTLP_LOGS_ENDPOINT definida — export OTLP de log está ligado'
+      : 'opt-in desligado (o padrão): a app manda log só para o stdout',
+  },
+]
 
 function log(msg: string, data?: object) {
-  const line = data ? `${msg} ${JSON.stringify(data)}` : msg
-  console.log(`[test-otlp] ${line}`)
+  console.log(`[test-otlp] ${data ? `${msg} ${JSON.stringify(data)}` : msg}`)
 }
 
-log('OTEL_EXPORTER_OTLP_ENDPOINT', { raw: endpointRaw || '(empty – SDK will use default)', effectiveBase })
-log('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT', { raw: logsEndpoint || '(not set)' })
-log('OTEL_EXPORTER_OTLP_INSECURE', { value: insecure })
-
-if (!endpointRaw || endpointRaw.trim() === '') {
-  console.warn(
-    '[test-otlp] WARNING: OTEL_EXPORTER_OTLP_ENDPOINT is empty. In the container, the SDK will use\n' +
-    '  http://localhost:4318 (inside the container localhost ≠ host; a collector in another container won\'t be reachable).\n' +
-    '  Set in .env: OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318 (Docker) or\n' +
-    '  http://localhost:4318 (app outside Docker, collector on host).'
-  )
+interface ProbeResult {
+  status?: number
+  aceita?: boolean
+  err?: string
 }
 
-async function probeOne(url: string): Promise<{ status?: number; ok?: boolean; err?: string }> {
+/**
+ * Manda um POST vazio em protobuf. Um coletor com o pipeline daquele sinal
+ * ligado responde 200 ou 400 (payload inválido) — os dois provam que a rota
+ * existe e está atendendo. 404 é o sinal de que o pipeline não existe ali, que
+ * é o modo de falha que interessa detectar.
+ */
+async function probe(url: string): Promise<ProbeResult> {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
+      headers: { 'Content-Type': 'application/x-protobuf' },
+      body: new Uint8Array(0),
+      signal: AbortSignal.timeout(5000),
     })
-    const ok = res.ok || res.status === 400 || res.status === 415 || res.status === 404
-    return { status: res.status, ok }
+    return { status: res.status, aceita: res.status === 200 || res.status === 400 }
   } catch (e: any) {
     return { err: String(e?.cause?.code || e?.code || e?.message || e) }
   }
 }
 
-async function probe(): Promise<{ status?: number; ok?: boolean; err?: string }> {
-  log('Testing connectivity', { url: tracesUrl })
-  let r = await probeOne(tracesUrl)
-  // host.docker.internal doesn't resolve on host; fallback to localhost when running test on host
-  if (r.err === 'ENOTFOUND' && effectiveBase.includes('host.docker.internal')) {
-    const localUrl = 'http://localhost:4318/v1/traces'
-    log('host.docker.internal doesn\'t resolve on host; trying localhost (host-side test)', { url: localUrl })
-    r = await probeOne(localUrl)
-  }
-  if (r.err) {
-    log('Probe error', { err: r.err })
-    console.error(
-      '[test-otlp] Connectivity: FAILED –', r.err, '\n' +
-      '  Possible causes: collector not running, port 4318 not exposed on host,\n' +
-      '  incorrect hostname (e.g. localhost inside container), or network/firewall.'
-    )
-    process.exitCode = 1
-    return r
-  }
-  log('Collector response', { status: r.status, ok: r.ok })
-  if (r.ok) {
-    console.log('[test-otlp] Connectivity: OK – collector is reachable.')
-  } else {
-    console.warn('[test-otlp] Connectivity: responded with', r.status, '– verify OTLP pipeline is enabled.')
-  }
-  return r
+log('OTEL_EXPORTER_OTLP_ENDPOINT', {
+  raw: endpointRaw || '(vazia – o SDK usará o default)',
+  effectiveBase,
+})
+log('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT', { raw: logsEndpointRaw || '(não definida)' })
+log('OTEL_EXPORTER_OTLP_INSECURE', { value: insecure })
+log('OTEL_METRIC_EXPORT_INTERVAL', { value: process.env.OTEL_METRIC_EXPORT_INTERVAL || '(default 60000)' })
+
+if (!endpointRaw.trim()) {
+  console.warn(
+    '[test-otlp] AVISO: OTEL_EXPORTER_OTLP_ENDPOINT está vazia. Dentro do container o SDK usa\n' +
+      '  http://localhost:4318, e ali localhost é o próprio container — um coletor em outro\n' +
+      '  container não é alcançável assim.',
+  )
 }
 
-;(async () => {
-  const connectivity = await probe()
-  fetch('http://127.0.0.1:7244/ingest/e10096f9-1cf5-4b11-9942-8eed4f6588b2', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      location: 'scripts/test-otlp.ts',
-      message: 'test-otlp result',
-      data: { endpointRaw, effectiveBase, tracesUrl, connectivity },
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      hypothesisId: 'H1',
-      runId: 'run1',
-    }),
-  }).catch(() => {})
-})()
+let falhou = false
+
+for (const signal of signals) {
+  const r = await probe(signal.url)
+  if (r.err) {
+    falhou = true
+    log(`${signal.nome}: FALHOU`, { url: signal.url, err: r.err })
+  } else if (r.aceita) {
+    log(`${signal.nome}: OK`, { url: signal.url, status: r.status })
+  } else {
+    falhou = true
+    log(`${signal.nome}: ROTA NÃO ATENDE`, { url: signal.url, status: r.status })
+    if (r.status === 404) {
+      console.warn(
+        `[test-otlp]   404 em /v1/${signal.nome} normalmente quer dizer que o coletor não tem\n` +
+          `  pipeline de ${signal.nome} configurado (receivers: [otlp]). A app vai exportar e\n` +
+          `  apanhar em silêncio — ligue OTEL_LOG_LEVEL=debug para ver o erro do SDK.`,
+      )
+    }
+  }
+  if (signal.observacao) log(`  nota (${signal.nome}): ${signal.observacao}`)
+}
+
+if (falhou) {
+  process.exitCode = 1
+  console.error('[test-otlp] Pelo menos um sinal não está sendo aceito pelo coletor.')
+} else {
+  console.log('[test-otlp] Todos os sinais aceitos pelo coletor.')
+}
