@@ -91,10 +91,28 @@ Set these in `.env` (or in the container environment) when you want to send tele
 |----------|----------|-------------|
 | `OTEL_SERVICE_NAME` | No | Service name in your observability platform. If unset, the API uses `maritaca-api` and the worker `maritaca-worker` (from Dockerfiles/compose). |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Yes* | OTLP base endpoint, e.g. `http://<collector>:4318`. Used for **traces** and **metrics**. |
-| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | No | **Logs** endpoint. If unset, uses `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/logs`. If you set it, use the full URL including `/v1/logs` (e.g. `http://host.docker.internal:4318/v1/logs`). |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | No | **Logs** endpoint — **explicit opt-in**. If unset, logs go to stdout only; setting `OTEL_EXPORTER_OTLP_ENDPOINT` alone does **not** enable log export (it covers traces and metrics). If you set it, use the full URL including `/v1/logs` (e.g. `http://host.docker.internal:4318/v1/logs`). Read the warning below first. |
 | `OTEL_EXPORTER_OTLP_INSECURE` | No | `true` for HTTP (no TLS). Default: `true`. |
 
 \* If `OTEL_EXPORTER_OTLP_ENDPOINT` is not set, traces and metrics are not exported; the app still runs, just without sending telemetry.
+
+> **Prefer stdout for logs.** When the app runs in a container next to a
+> collector that reads the host journal, stdout is the better path and OTLP log
+> export is redundant — or worse. Two reasons, both measured against the
+> production collector on 2026-08-09:
+>
+> - `pino-opentelemetry-transport` builds its **own** resource and does not
+>   inherit `OTEL_RESOURCE_ATTRIBUTES`. Inside a container its detection resolves
+>   `host.name` to the **container ID**, so the service shows up under a host
+>   nobody recognizes even when `host.name` is set correctly in compose.
+> - Records exported this way arrived with `severity_number: 0` (no level at all)
+>   and with `traceId`/`spanId` as plain string attributes, which the backend does
+>   not turn into a log↔trace link.
+>
+> Reading the same logs from stdout via journald gave strictly more: real
+> severity, native `trace_id`/`span_id`, and the pino fields flattened into
+> filterable attributes. Enabling both also double-ingests every event, with a
+> different severity on each path.
 
 ### 2.2. Example for Docker Compose (Maritaca + collector on the same host)
 
@@ -103,7 +121,8 @@ In Maritaca's `.env` (or `docker-compose` env):
 ```bash
 # Adjust if your collector has a different host/name
 OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318
-# Optional; logs use /v1/logs on top of ENDPOINT if not set
+# Opt-in only. Leave it commented to keep logs on stdout (recommended when a
+# collector already reads the host journal) — see the warning in 2.1.
 # OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://host.docker.internal:4318/v1/logs
 OTEL_EXPORTER_OTLP_INSECURE=true
 ```
@@ -382,10 +401,11 @@ Import this JSON into Grafana to create a Maritaca monitoring dashboard:
 
 Remove or leave empty in the environment:
 
-- `OTEL_EXPORTER_OTLP_ENDPOINT`
-- `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` (if set)
+- `OTEL_EXPORTER_OTLP_ENDPOINT` — stops traces and metrics.
+- `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` — stops the OTLP log transport. Unset is
+  already the default; logs stay on stdout.
 
-Then traces and metrics are not exported and logs do not use the OTLP transport (they stay on stdout only).
+Logs always go to stdout regardless, so removing these never makes the app silent.
 
 ---
 
@@ -399,7 +419,9 @@ If traces and metrics appear but logs don't:
    Your `otel-collector` needs a `logs` pipeline with `receivers: [otlp]`. See section 1.2. Some collectors don't enable logs by default.
 
 2. **Environment variables in Maritaca**  
-   Confirm that `OTEL_EXPORTER_OTLP_ENDPOINT` is set (or `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` with full URL, including `/v1/logs`). The `pino-opentelemetry-transport` uses these variables; in Docker, they must be in the `environment` section of `docker-compose` (the `.env` is loaded by compose).
+   OTLP log export requires `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` with the full URL including `/v1/logs`. `OTEL_EXPORTER_OTLP_ENDPOINT` on its own is **not** enough — it only covers traces and metrics. In Docker these must be in the `environment` section of `docker-compose` (the `.env` is loaded by compose).
+
+   Before adding it, check whether you actually want this path: if a collector already reads the host journal, your logs are arriving via stdout with better fidelity. See the warning in section 2.1.
 
 3. **Where to view logs in your platform**  
    Check the **Logs** section (not Traces or Metrics). Filter by `service.name` = `maritaca-api` or `maritaca-worker`.
