@@ -1,6 +1,20 @@
-# Deploy Maritaca to production VPS via SSH.
-# Builds API and Worker images, pushes to GHCR, then deploys using GitHub Environment (production).
-# Production .env is generated from the same environment's variables and secrets.
+# Deploy da maritaca na produtos-01.
+#
+# O compose da stack NÃO mora aqui: ele vive em sunnysystems/infra, em
+# `compose/produtos-01/maritaca/docker-compose.yaml`, e é rsyncado para
+# /opt/maritaca. O `.env` daquele diretório também é do infra (Infisical) e
+# carrega POSTGRES_PASSWORD, AUDIT_ENCRYPTION_KEY e INTEGRATION_ENCRYPTION_KEY —
+# sem as MESMAS chaves o dado cifrado no banco fica ilegível.
+#
+# Por isso este workflow NÃO escreve .env nem copia compose. Ele faz o que cabe
+# ao repo da aplicação: publica as imagens no GHCR e, no host, troca uma linha
+# (TAG=) e roda pull/migrate/up.
+#
+# Histórico: até 2026-08-09 este workflow gerava o .env inteiro e fazia SCP do
+# docker-compose.prod.yml para `vars.SSH_HOST`, que continuou apontando para a
+# sunshine-prod depois da migração da maritaca para a produtos-01 (julho/2026).
+# Resultado: todo deploy desde então foi para a máquina errada. Se alguém pensar
+# em ressuscitar aquele formato, lembre que ele apagava o .env do destino.
 
 name: Deploy to production
 
@@ -30,6 +44,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      tag: sha-${{ github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -94,6 +110,9 @@ jobs:
           push: true
           tags: ${{ steps.meta-worker.outputs.tags }}
           labels: ${{ steps.meta-worker.outputs.labels }}
+          build-args: |
+            COMMIT_SHA=${{ github.sha }}
+            APP_VERSION=${{ steps.app-version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -118,132 +137,105 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
+    name: Deploy na produtos-01
     needs: build-and-push
     runs-on: ubuntu-latest
     environment: production
-    env:
-      REGISTRY: ghcr.io
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Generate production .env
-        env:
-          # App env vars (from GitHub Environment variables)
-          PORT: ${{ vars.PORT }}
-          HOST: ${{ vars.HOST }}
-          LOG_LEVEL: ${{ vars.LOG_LEVEL }}
-          NODE_ENV: ${{ vars.NODE_ENV }}
-          RATE_LIMIT_MAX: ${{ vars.RATE_LIMIT_MAX }}
-          RATE_LIMIT_WINDOW_MS: ${{ vars.RATE_LIMIT_WINDOW_MS }}
-          OTEL_SERVICE_NAME: ${{ vars.OTEL_SERVICE_NAME }}
-          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
-          OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT }}
-          OTEL_EXPORTER_OTLP_INSECURE: ${{ vars.OTEL_EXPORTER_OTLP_INSECURE }}
-          OTEL_METRIC_EXPORT_INTERVAL: ${{ vars.OTEL_METRIC_EXPORT_INTERVAL }}
-          OTEL_LOG_LEVEL: ${{ vars.OTEL_LOG_LEVEL }}
-          OTEL_TRACES_SAMPLER: ${{ vars.OTEL_TRACES_SAMPLER }}
-          OTEL_TRACES_SAMPLER_ARG: ${{ vars.OTEL_TRACES_SAMPLER_ARG }}
-          EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER }}
-          EMAIL_PROVIDERS: ${{ vars.EMAIL_PROVIDERS }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
-          SMS_PROVIDER: ${{ vars.SMS_PROVIDER }}
-          PUSH_PROVIDER: ${{ vars.PUSH_PROVIDER }}
-          SNS_APNS_PLATFORM_ARN: ${{ vars.SNS_APNS_PLATFORM_ARN }}
-          SNS_APNS_SANDBOX_PLATFORM_ARN: ${{ vars.SNS_APNS_SANDBOX_PLATFORM_ARN }}
-          SNS_GCM_PLATFORM_ARN: ${{ vars.SNS_GCM_PLATFORM_ARN }}
-          WEB_PROVIDER: ${{ vars.WEB_PROVIDER }}
-          VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
-          VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT }}
-          TWILIO_SMS_FROM: ${{ vars.TWILIO_SMS_FROM }}
-          TWILIO_WHATSAPP_FROM: ${{ vars.TWILIO_WHATSAPP_FROM }}
-          AUDIT_HASH_SUBJECT_IDS: ${{ vars.AUDIT_HASH_SUBJECT_IDS }}
-          AUDIT_RETENTION_MONTHS: ${{ vars.AUDIT_RETENTION_MONTHS }}
-          AUDIT_PARTITION_MONTHS_AHEAD: ${{ vars.AUDIT_PARTITION_MONTHS_AHEAD }}
-          AUDIT_MAINTENANCE_CRON: ${{ vars.AUDIT_MAINTENANCE_CRON }}
-          # App secrets (from GitHub Environment secrets)
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          REDIS_URL: ${{ secrets.REDIS_URL }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
-          MANDRILL_API_KEY: ${{ secrets.MANDRILL_API_KEY }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CLIENT_ID: ${{ secrets.SLACK_CLIENT_ID }}
-          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
-          SLACK_CLIENT_SECRET: ${{ secrets.SLACK_CLIENT_SECRET }}
-          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-          AUDIT_ENCRYPTION_KEY: ${{ secrets.AUDIT_ENCRYPTION_KEY }}
-          INTEGRATION_ENCRYPTION_KEY: ${{ secrets.INTEGRATION_ENCRYPTION_KEY }}
-          # Admin API credential (gates POST/GET/DELETE /v1/admin/api-keys)
-          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+      # Tailscale por curl, não pela action: mesmo padrão do deploy-app.yml do
+      # infra. timeout curto porque `tailscale up` com authkey recusada não
+      # falha — fica pendurado esperando login interativo e queima o job.
+      - name: Entrar na tailnet
+        timeout-minutes: 3
         run: |
-          APP_KEYS="PORT HOST LOG_LEVEL NODE_ENV RATE_LIMIT_MAX RATE_LIMIT_WINDOW_MS OTEL_SERVICE_NAME OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_LOGS_ENDPOINT OTEL_EXPORTER_OTLP_INSECURE OTEL_METRIC_EXPORT_INTERVAL OTEL_LOG_LEVEL OTEL_TRACES_SAMPLER OTEL_TRACES_SAMPLER_ARG EMAIL_PROVIDER EMAIL_PROVIDERS AWS_REGION AWS_DEFAULT_REGION SMS_PROVIDER PUSH_PROVIDER SNS_APNS_PLATFORM_ARN SNS_APNS_SANDBOX_PLATFORM_ARN SNS_GCM_PLATFORM_ARN WEB_PROVIDER VAPID_PUBLIC_KEY VAPID_SUBJECT TWILIO_SMS_FROM TWILIO_WHATSAPP_FROM AUDIT_HASH_SUBJECT_IDS AUDIT_RETENTION_MONTHS AUDIT_PARTITION_MONTHS_AHEAD AUDIT_MAINTENANCE_CRON DATABASE_URL REDIS_URL RESEND_API_KEY RESEND_WEBHOOK_SECRET MANDRILL_API_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SLACK_BOT_TOKEN SLACK_CLIENT_ID SLACK_SIGNING_SECRET SLACK_CLIENT_SECRET VAPID_PRIVATE_KEY TELEGRAM_BOT_TOKEN TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN AUDIT_ENCRYPTION_KEY INTEGRATION_ENCRYPTION_KEY ADMIN_API_KEY"
-          rm -f .env.production
-          for key in $APP_KEYS; do
-            val="${!key}"
-            if [ -n "$val" ]; then
-              printf '%s=%s\n' "$key" "$val" >> .env.production
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey "${{ secrets.TS_CI_AUTHKEY }}" \
+            --hostname "ci-${{ github.repository_owner }}-${{ github.run_id }}"
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat > ~/.ssh/config <<CFG
+          Host ${{ vars.DEPLOY_HOST }}
+            User ${{ vars.DEPLOY_USER || 'deploy' }}
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking accept-new
+          CFG
+          chmod 600 ~/.ssh/config
+
+      # Login transitório no GHCR: o host usa o GITHUB_TOKEN do run e faz logout
+      # no trap, sem PAT persistente no servidor.
+      - name: Atualizar TAG, migrar e subir
+        run: |
+          ssh ${{ vars.DEPLOY_HOST }} \
+            GH_ACTOR="${{ github.actor }}" \
+            GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+            DEPLOY_PATH="${{ vars.DEPLOY_PATH }}" \
+            NEW_TAG="${{ needs.build-and-push.outputs.tag }}" \
+            bash -s <<'EOS'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+
+          # Só a linha do TAG. O resto do .env é do infra/Infisical e inclui as
+          # chaves que cifram colunas no banco — nunca reescrever o arquivo.
+          touch .env
+          if grep -q '^TAG=' .env; then
+            sed -i "s|^TAG=.*|TAG=${NEW_TAG}|" .env
+          else
+            echo "TAG=${NEW_TAG}" >> .env
+          fi
+          echo "TAG agora: $(grep '^TAG=' .env)"
+
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null 2>&1' EXIT
+
+          docker compose pull -q
+
+          # Migrations antes de subir a app, para nenhum processo novo encostar
+          # num schema velho. O serviço migrate depende do postgres saudável.
+          docker compose up -d postgres
+          docker compose run --rm migrate
+
+          docker compose up -d --remove-orphans
+
+          # -a é obrigatório: as tags são imutáveis, então versão velha nunca
+          # vira dangling e o `prune -f` puro não remove nada — foi assim que a
+          # produtos-01 chegou a 89% de disco. O filtro de 24h segura o release
+          # anterior para rollback local.
+          docker image prune -af --filter "until=24h" >/dev/null
+
+          docker compose ps
+          EOS
+
+      # A stack não publica porta no host, então o health check roda de dentro
+      # do container. `node -e` em vez de curl/wget: a imagem é node:26-alpine e
+      # o node é a única coisa garantida ali.
+      - name: Health check
+        run: |
+          ssh ${{ vars.DEPLOY_HOST }} \
+            DEPLOY_PATH="${{ vars.DEPLOY_PATH }}" \
+            bash -s <<'EOS'
+          set -uo pipefail
+          cd "$DEPLOY_PATH"
+          for i in $(seq 1 12); do
+            if docker compose exec -T api node -e "
+              fetch('http://127.0.0.1:7377/health')
+                .then(async (r) => {
+                  console.log(r.status, (await r.text()).slice(0, 200))
+                  process.exit(r.ok ? 0 : 1)
+                })
+                .catch((e) => { console.log(String(e)); process.exit(1) })
+            "; then
+              echo "Health OK"
+              exit 0
             fi
+            sleep 10
           done
-
-      # scp-action "target" is a directory; files keep their names. Use DEPLOY_PATH only.
-      - name: Prepare deploy path on VPS
-        uses: appleboy/ssh-action@v1.2.5
-        with:
-          host: ${{ vars.SSH_HOST }}
-          username: ${{ vars.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            rm -rf "${{ vars.DEPLOY_PATH }}/docker-compose.prod.yml" "${{ vars.DEPLOY_PATH }}/.env"
-            mkdir -p "${{ vars.DEPLOY_PATH }}"
-
-      - name: Copy .env to VPS
-        run: cp .env.production .env
-      - name: SCP .env to VPS
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ vars.SSH_HOST }}
-          username: ${{ vars.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: ".env"
-          target: "${{ vars.DEPLOY_PATH }}"
-
-      - name: Copy docker-compose.prod.yml to VPS
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ vars.SSH_HOST }}
-          username: ${{ vars.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "docker-compose.prod.yml"
-          target: "${{ vars.DEPLOY_PATH }}"
-
-      - name: Deploy on VPS
-        uses: appleboy/ssh-action@v1.2.5
-        env:
-          API_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-api:sha-${{ github.sha }}
-          WORKER_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-worker:sha-${{ github.sha }}
-          MIGRATE_IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/maritaca-migrate:sha-${{ github.sha }}
-        with:
-          host: ${{ vars.SSH_HOST }}
-          username: ${{ vars.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            set -e
-            cd "${{ vars.DEPLOY_PATH }}"
-            # Login só necessário se o pacote GHCR for privado; se for público, pull funciona sem token
-            if [ -n "${{ secrets.GHCR_TOKEN }}" ]; then
-              echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            fi
-            export MARITACA_API_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/maritaca-api:sha-${{ github.sha }}"
-            export MARITACA_WORKER_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/maritaca-worker:sha-${{ github.sha }}"
-            export MARITACA_MIGRATE_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/maritaca-migrate:sha-${{ github.sha }}"
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d postgres
-            docker compose -f docker-compose.prod.yml run --rm migrate
-            docker compose -f docker-compose.prod.yml up -d
+          echo "Health check FALHOU após 2 minutos"
+          docker compose logs --tail 50 api
+          exit 1
+          EOS
