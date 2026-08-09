@@ -106,8 +106,12 @@ function wrapLoggerWithErrorStackDebug(log: pino.Logger): pino.Logger {
 
 /**
  * Create a Pino logger instance with OpenTelemetry trace context integration.
- * Injects traceId and spanId when a span is active. If OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
- * is set, logs are also sent to that OTLP endpoint via pino-opentelemetry-transport.
+ * Injects traceId and spanId when a span is active.
+ *
+ * Logs go to stdout. Only when `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` is set
+ * explicitly they ALSO go to that OTLP endpoint via pino-opentelemetry-transport
+ * — setting `OTEL_EXPORTER_OTLP_ENDPOINT` alone (traces/metrics) no longer
+ * enables it. See the comment in the body for why.
  */
 export async function createLogger(options: LoggerOptions = {}): Promise<pino.Logger> {
   const rawLevel = options.level ?? process.env.LOG_LEVEL ?? 'info'
@@ -123,11 +127,23 @@ export async function createLogger(options: LoggerOptions = {}): Promise<pino.Lo
     serializers: defaultSerializers,
   }
 
-  const logsEndpoint =
-    process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ||
-    (process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-      ? `${process.env.OTEL_EXPORTER_OTLP_ENDPOINT.replace(/\/$/, '')}/v1/logs`
-      : undefined)
+  // OTLP de logs é OPT-IN EXPLÍCITO: só liga com OTEL_EXPORTER_OTLP_LOGS_ENDPOINT.
+  //
+  // Antes bastava OTEL_EXPORTER_OTLP_ENDPOINT — que existe para traces e
+  // métricas — para ligar junto o transporte de logs, e o efeito colateral não
+  // era óbvio: o pino-opentelemetry-transport monta o PRÓPRIO resource e não
+  // herda OTEL_RESOURCE_ATTRIBUTES. Rodando em container, a detecção dele
+  // resolve `host.name` para o ID do container, então a maritaca aparecia no
+  // SigNoz como dois hosts fantasma (`abf760b1dcfd`, `d8be6ea8d07d`) mesmo com
+  // `host.name=produtos-01` correto e aplicado no compose. De quebra, os mesmos
+  // eventos entravam duas vezes, por caminhos com severidade diferente.
+  //
+  // O caminho canônico de log é o stdout: o journald do host recebe e o otelcol
+  // lê dali. Medido em 2026-08-09, ele carrega MAIS do que o OTLP carregava —
+  // severidade (pelo OTLP chegava com severity_number 0), traceId/spanId
+  // promovidos a campo nativo, e os campos do pino achatados como atributos
+  // filtráveis. Ver decisão nº 18 em sunnysystems/infra.
+  const logsEndpoint = process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT?.trim() || undefined
 
   if (logsEndpoint) {
     const levelOpt = level as pino.Level
@@ -169,7 +185,12 @@ export async function createLogger(options: LoggerOptions = {}): Promise<pino.Lo
     )
   }
 
-  return wrapLoggerWithErrorStackDebug(pino(baseOpts))
+  // Produção sem OTLP de logs: stdout é o único caminho, então ele é síncrono
+  // de propósito. Com o pino default (buffer de 4KB) o que estivesse na fila
+  // morreria junto com o processo — justamente nas linhas que explicam o crash.
+  return wrapLoggerWithErrorStackDebug(
+    pino(baseOpts, pino.destination({ dest: 1, sync: true, minLength: 1 })),
+  )
 }
 
 /**
