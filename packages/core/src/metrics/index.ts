@@ -67,13 +67,32 @@ export const providerRateLimitsCounter = meter.createCounter('maritaca.provider.
 })
 
 /**
- * UpDownCounter for queue job states
- * Labels: queue, status (waiting, active, completed, failed)
+ * Observable gauge for queue depth
+ * Labels: queue, status (waiting, active, delayed, failed, paused)
+ *
+ * Observable rather than an UpDownCounter on purpose: jobs are enqueued by the
+ * API and consumed by the worker, so no single process sees every transition.
+ * Polling Redis at collection time is the only way to get a number that is
+ * actually true. Register a reader with `queueDepthGauge.addCallback(...)`.
  */
-export const queueJobsCounter = meter.createUpDownCounter('maritaca.queue.jobs', {
+export const queueDepthGauge = meter.createObservableGauge('maritaca.queue.jobs', {
   description: 'Current number of jobs by queue and status',
   unit: '{job}',
   valueType: ValueType.INT,
+})
+
+/**
+ * Observable gauge for the age of the oldest job still waiting
+ * Labels: queue
+ *
+ * This is the alertable signal for a queue with sparse traffic: a deep queue
+ * that is draining is normal, a job sitting untouched for 15 minutes is an
+ * incident, and it says so without depending on there being traffic at all.
+ */
+export const queueOldestJobAgeGauge = meter.createObservableGauge('maritaca.queue.oldest_job.age', {
+  description: 'Age in seconds of the oldest job in the waiting state (0 when the queue is empty)',
+  unit: 's',
+  valueType: ValueType.DOUBLE,
 })
 
 /**
@@ -158,7 +177,8 @@ export const metrics = {
   processingDuration: processingDurationHistogram,
   providerErrors: providerErrorsCounter,
   providerRateLimits: providerRateLimitsCounter,
-  queueJobs: queueJobsCounter,
+  queueDepth: queueDepthGauge,
+  queueOldestJobAge: queueOldestJobAgeGauge,
   healthLatency: healthLatencyHistogram,
   healthStatus: healthStatusGauge,
 }

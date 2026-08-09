@@ -4,6 +4,9 @@ import { createDbClient, createLogger, parseRedisUrl, type Logger } from '@marit
 import { processMessageJob } from './processors/message.js'
 import { processMaintenanceJob, type MaintenanceJobData } from './processors/maintenance.js'
 import { createMaintenanceQueue, scheduleMaintenanceJobs, MAINTENANCE_QUEUE_NAME } from './queues/maintenance.js'
+import { startQueueMetrics, type QueueMetricsHandle } from './queues/metrics.js'
+
+const NOTIFICATION_QUEUE_NAME = 'maritaca-notifications'
 
 export interface WorkerOptions {
   databaseUrl: string
@@ -13,6 +16,8 @@ export interface WorkerOptions {
   enableMaintenance?: boolean
   /** Schedule recurring maintenance jobs on startup (default: true) */
   scheduleMaintenance?: boolean
+  /** Publish queue depth and oldest-job age as OTLP metrics (default: true) */
+  enableQueueMetrics?: boolean
 }
 
 /**
@@ -30,8 +35,12 @@ export interface Workers {
  */
 export async function createWorker(options: WorkerOptions): Promise<Workers> {
   const logger = options.logger ?? await createLogger({ serviceName: 'maritaca-worker' })
-  const { enableMaintenance = true, scheduleMaintenance = true } = options
-  
+  const {
+    enableMaintenance = true,
+    scheduleMaintenance = true,
+    enableQueueMetrics = true,
+  } = options
+
   const connection = parseRedisUrl(options.redisUrl)
 
   const db = createDbClient(options.databaseUrl)
@@ -100,19 +109,36 @@ export async function createWorker(options: WorkerOptions): Promise<Workers> {
     }
   }
 
+  // Queue depth / oldest-job age as metrics (see queues/metrics.ts for why)
+  let queueMetrics: QueueMetricsHandle | undefined
+
+  if (enableQueueMetrics) {
+    queueMetrics = startQueueMetrics({
+      connection,
+      queueNames: enableMaintenance
+        ? [NOTIFICATION_QUEUE_NAME, MAINTENANCE_QUEUE_NAME]
+        : [NOTIFICATION_QUEUE_NAME],
+      logger,
+    })
+  }
+
   // Create close function for graceful shutdown
   const close = async () => {
     logger.info('Closing workers and connections...')
-    
+
     // Close workers first (stops processing new jobs)
     await notificationWorker.close()
     if (maintenanceWorker) {
       await maintenanceWorker.close()
     }
-    
+
+    if (queueMetrics) {
+      await queueMetrics.close()
+    }
+
     // Close database connection pool
     await db.close()
-    
+
     logger.info('All workers and connections closed')
   }
 
