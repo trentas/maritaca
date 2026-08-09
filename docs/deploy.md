@@ -1,129 +1,80 @@
-# Deploy em produção (GitHub Actions + VPS)
+# Deploy em produção (produtos-01)
 
-Este documento descreve o deploy do Maritaca em produção usando GitHub Actions: build das imagens (API e Worker), push para o GitHub Container Registry (GHCR) e deploy via SSH em um VPS. O `.env` de produção é **gerado no deploy** a partir do GitHub Environment `production` (variáveis e secrets); não é editado manualmente no VPS.
+A maritaca roda na **produtos-01**, e a stack dela é declarada em outro repositório: [`sunnysystems/infra`](https://github.com/sunnysystems/infra), em `compose/produtos-01/maritaca/docker-compose.yaml`, rsyncado para `/opt/maritaca` no host.
 
-## Visão geral
+A divisão é essa, e vale entendê-la antes de mexer:
 
-- **Workflow:** [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) — disparo manual (`workflow_dispatch`) ou em `push` na branch `main`.
-- **Imagens:** publicadas em `ghcr.io/<owner>/<repo>/maritaca-api`, `maritaca-worker` e `maritaca-migrate` (tags `latest` e `sha-<commit>`).
-- **VPS:** SSH com chave; no servidor são executados pull, `up -d postgres`, **migrações** (`docker compose run --rm migrate`) e depois `up -d` (api e worker).
-- **Redis:** não sobe no compose de produção; use o Redis já existente no VPS com **database separado** (ex.: `REDIS_URL=redis://host.docker.internal:6379/1`).
-- **Pacote GHCR público (recomendado):** se o pacote do GHCR estiver **público**, o VPS consegue fazer `docker pull` sem autenticação; não é necessário configurar `GHCR_TOKEN`. As imagens não contêm env/secrets (só o código); o `.env` é gerado no deploy e enviado separadamente.
+| | quem é dono | onde |
+|---|---|---|
+| Imagens (api, worker, migrate) | este repo | GHCR, via `.github/workflows/deploy.yml` |
+| `docker-compose.yaml` da stack | `sunnysystems/infra` | `compose/produtos-01/maritaca/` → `/opt/maritaca` |
+| `.env` de produção | `sunnysystems/infra` (Infisical) | `/opt/maritaca/.env` no host |
+| Trocar a versão em execução | este repo | workflow, alterando só a linha `TAG=` |
 
-## Pré-requisitos no VPS
+> **O `.env` de produção não é gerado por este repo.** Ele carrega `POSTGRES_PASSWORD`, `AUDIT_ENCRYPTION_KEY` e `INTEGRATION_ENCRYPTION_KEY`, e essas duas últimas cifram colunas do banco: sem as **mesmas** chaves, o dado existente fica ilegível. O workflow altera exatamente uma linha daquele arquivo, a do `TAG`.
 
-1. **Docker** e **Docker Compose** (v2) instalados.
-2. **Redis** já rodando na máquina. No GitHub Environment, configure `REDIS_URL` com um database exclusivo do Maritaca (ex.: `redis://host.docker.internal:6379/1`). Containers acessam o host via `host.docker.internal`.
-3. **Diretório do app:** clone do repositório no caminho que será usado como `DEPLOY_PATH` (ex.: `/opt/maritaca`), ou pelo menos os arquivos `docker-compose.prod.yml` e `.env` (o workflow gera o `.env` e faz SCP para `$DEPLOY_PATH/.env`; o compose roda em `$DEPLOY_PATH`).
-4. **Acesso SSH:** usuário com permissão para escrever em `DEPLOY_PATH` e rodar Docker. Recomenda-se um usuário dedicado (ex.: `deploy`) e chave SSH usada apenas pelo GitHub Actions.
+## Como o deploy funciona
+
+Disparo por push de tag `v*` ou manual (**Actions → Deploy to production → Run workflow**).
+
+1. **build-and-push** — constrói as três imagens e publica no GHCR com as tags `latest` e `sha-<commit>`.
+2. **deploy** — entra na tailnet, conecta por SSH na produtos-01 e, em `/opt/maritaca`:
+   - troca a linha `TAG=` do `.env` para `sha-<commit>`;
+   - `docker compose pull`;
+   - `docker compose up -d postgres` e `docker compose run --rm migrate` — **migrations antes de subir a app**, para nenhum processo novo encostar em schema velho;
+   - `docker compose up -d --remove-orphans`;
+   - `docker image prune -af --filter until=24h` (as tags são imutáveis, então versão velha nunca vira dangling; sem o `-a` o disco enche);
+   - health check chamando `/health` de dentro do container, já que a stack não publica porta no host.
 
 ## GitHub Environment `production`
 
-Configure em **Settings → Environments → production** (ou o nome que for usado no workflow). Todas as entradas do [.env.example](../.env.example) podem ser configuradas aqui; o deploy gera o `.env` no VPS a partir dessas variáveis e secrets. Só inclua as que forem necessárias para o seu ambiente (opcionais vazias não precisam ser definidas).
+| Tipo | Nome | Obrigatório | Descrição |
+|---|---|---|---|
+| Variable | `DEPLOY_HOST` | Sim | Nome da produtos-01 na tailnet (MagicDNS) |
+| Variable | `DEPLOY_PATH` | Sim | Diretório da stack no host — `/opt/maritaca` |
+| Variable | `DEPLOY_USER` | Não | Usuário SSH. Default: `deploy` |
+| Secret | `TS_CI_AUTHKEY` | Sim | Auth key da Tailscale para o runner entrar na tailnet |
+| Secret | `DEPLOY_SSH_KEY` | Sim | Chave privada SSH do usuário de deploy na produtos-01 |
 
-### Deploy (SSH e GHCR)
-
-| Tipo      | Nome              | Obrigatório | Descrição |
-| --------- | ----------------- | ----------- | --------- |
-| Variable  | `SSH_HOST`        | Sim         | Hostname ou IP do VPS |
-| Variable  | `SSH_USER`        | Sim         | Usuário SSH (ex.: `deploy`) |
-| Variable  | `DEPLOY_PATH`     | Sim         | Diretório do app no VPS (ex.: `/opt/maritaca`) |
-| Secret    | `SSH_PRIVATE_KEY` | Sim         | Conteúdo da chave privada SSH |
-| Secret    | `GHCR_TOKEN`      | Não         | Só se o pacote GHCR for **privado**. PAT com `read:packages` para `docker login ghcr.io` no VPS. Se o pacote for **público**, não configure (o pull funciona sem login). |
-
-### Deixar o pacote do GHCR público (recomendado)
-
-Para o VPS fazer `docker pull` sem `GHCR_TOKEN`:
-
-1. No repositório no GitHub: **Packages** (barra lateral direita ou **Code** → link do pacote ao lado de "Packages").
-2. Abra cada pacote (**maritaca-api**, **maritaca-worker**, **maritaca-migrate**); repita para todos.
-3. Em **Package settings** (menu à direita), em **Danger Zone**, use **Change visibility** → **Public**.
-4. Confirme para cada um.
-
-Depois disso, o deploy não precisa do secret `GHCR_TOKEN`.
-
-### App – Environment variables (não sensíveis)
-
-Defina como **Environment variables** no environment `production`. São escritas no `.env` de produção no deploy.
-
-| Variável | Exemplo / Observação |
-| -------- | --------------------- |
-| `PORT` | 7377 |
-| `HOST` | 0.0.0.0 |
-| `LOG_LEVEL` | info |
-| `NODE_ENV` | production |
-| `RATE_LIMIT_MAX` | 100 |
-| `RATE_LIMIT_WINDOW_MS` | 60000 |
-| `OTEL_SERVICE_NAME` | Opcional |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Opcional |
-| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Opcional |
-| `OTEL_EXPORTER_OTLP_INSECURE` | Opcional |
-| `OTEL_TRACES_SAMPLER` | Opcional |
-| `OTEL_TRACES_SAMPLER_ARG` | Opcional |
-| `EMAIL_PROVIDER` | mock \| resend \| ses |
-| `AWS_REGION` | Se usar SES/SNS |
-| `AWS_DEFAULT_REGION` | Alternativa a AWS_REGION |
-| `SMS_PROVIDER` | sns \| twilio |
-| `PUSH_PROVIDER` | sns |
-| `SNS_APNS_PLATFORM_ARN` | Opcional |
-| `SNS_APNS_SANDBOX_PLATFORM_ARN` | Opcional |
-| `SNS_GCM_PLATFORM_ARN` | Opcional |
-| `WEB_PROVIDER` | webpush |
-| `VAPID_PUBLIC_KEY` | Se usar web push |
-| `VAPID_SUBJECT` | mailto: ou https: |
-| `TWILIO_SMS_FROM` | E.164 ou SID |
-| `TWILIO_WHATSAPP_FROM` | E.164 |
-| `AUDIT_HASH_SUBJECT_IDS` | true \| false |
-| `AUDIT_RETENTION_MONTHS` | 12 |
-| `AUDIT_PARTITION_MONTHS_AHEAD` | 3 |
-| `AUDIT_MAINTENANCE_CRON` | 0 3 * * * (cron) |
-
-### App – Environment secrets (sensíveis)
-
-Defina como **Environment secrets** no environment `production`. São escritas no `.env` de produção no deploy.
-
-| Secret | Observação |
-| ------ | ---------- |
-| `DATABASE_URL` | Connection string PostgreSQL (ex.: `postgresql://user:pass@postgres:5432/maritaca`) |
-| `REDIS_URL` | Connection string Redis; em produção use database separado (ex.: `redis://host.docker.internal:6379/1`) |
-| `RESEND_API_KEY` | Se EMAIL_PROVIDER=resend |
-| `RESEND_WEBHOOK_SECRET` | Opcional, webhooks Resend |
-| `AWS_ACCESS_KEY_ID` | Se usar SES/SNS |
-| `AWS_SECRET_ACCESS_KEY` | Se usar SES/SNS |
-| `SLACK_BOT_TOKEN` | Se usar canal Slack |
-| `VAPID_PRIVATE_KEY` | Se usar web push |
-| `TELEGRAM_BOT_TOKEN` | Se usar Telegram |
-| `TWILIO_ACCOUNT_SID` | Se usar Twilio |
-| `TWILIO_AUTH_TOKEN` | Se usar Twilio |
-| `AUDIT_ENCRYPTION_KEY` | Produção: `openssl rand -base64 32` |
-
-## Primeiro deploy
-
-1. Crie o environment `production` e configure todas as variáveis e secrets listados acima (pelo menos os obrigatórios e os que sua instalação usa).
-2. No VPS: instale Docker e Docker Compose; garanta que o Redis está rodando; clone o repositório em `DEPLOY_PATH` (ou coloque lá o `docker-compose.prod.yml`).
-3. Dispare o workflow manualmente (**Actions → Deploy to production → Run workflow**) ou faça push na `main`.
-4. **Migrações:** são aplicadas **automaticamente** em cada deploy. O workflow sobe o Postgres, roda o container `migrate` (imagem `maritaca-migrate`) com `drizzle-kit migrate` e só então sobe a API e o Worker. Não é necessário rodar migrações manualmente após o deploy. Para rodar migrações manualmente no VPS (ex.: primeiro deploy antes de automatizar):
-
-```bash
-cd "$DEPLOY_PATH"
-export MARITACA_MIGRATE_IMAGE=ghcr.io/<owner>/<repo>/maritaca-migrate:latest
-docker compose -f docker-compose.prod.yml run --rm migrate
-```
+Não há mais variáveis de aplicação aqui: `DATABASE_URL`, `REDIS_URL`, chaves de provedor e afins vivem no `.env` do host, gerenciado pelo infra. O login no GHCR no host é transitório, feito com o `GITHUB_TOKEN` do próprio run e desfeito no fim — não é preciso PAT no servidor nem deixar o pacote público.
 
 ## Rollback
 
-As imagens são taggeadas com o SHA do commit (`sha-<commit>`). Para voltar a uma versão anterior, altere no environment (ou no VPS) as variáveis de imagem para o SHA desejado e rode novamente o deploy, ou no VPS:
+As imagens são taggeadas com o SHA do commit, então voltar é trocar o `TAG`:
 
 ```bash
-cd "$DEPLOY_PATH"
-export MARITACA_API_IMAGE=ghcr.io/<owner>/<repo>/maritaca-api:sha-<commit-anterior>
-export MARITACA_WORKER_IMAGE=ghcr.io/<owner>/<repo>/maritaca-worker:sha-<commit-anterior>
-docker compose -f docker-compose.prod.yml pull
-docker compose -f docker-compose.prod.yml up -d
+ssh <produtos-01>
+cd /opt/maritaca
+sed -i 's|^TAG=.*|TAG=sha-<commit-anterior>|' .env
+docker compose pull -q && docker compose up -d
 ```
+
+O `prune` do deploy preserva imagens das últimas 24h, então o release anterior normalmente ainda está em disco; se não estiver, o pull traz do GHCR.
+
+Rollback que envolva **reverter migration** não é coberto por isso — o `migrate` só avança.
+
+## Verificar depois do deploy
+
+```bash
+ssh <produtos-01>
+cd /opt/maritaca
+docker compose ps
+grep '^TAG=' .env
+docker compose exec -T api node -e "fetch('http://127.0.0.1:7377/health').then(r=>r.text()).then(console.log)"
+docker compose logs --tail 50 worker
+```
+
+Para conferir a versão em execução, `/version` responde com `APP_VERSION` e `COMMIT_SHA`, injetados no build a partir da tag.
+
+## Histórico: o deploy que ia para a máquina errada
+
+Até 2026-08-09 este workflow gerava o `.env` inteiro a partir do GitHub Environment e fazia SCP de um `docker-compose.prod.yml` deste repo para `vars.SSH_HOST` — que continuou apontando para a **sunshine-prod** depois que a maritaca migrou para a produtos-01, em julho de 2026. Todo deploy a partir daí atualizou a máquina antiga, sem ninguém notar: o workflow terminava verde.
+
+Duas lições ficaram no formato atual. A primeira é que este repo não escreve mais o `.env` do destino — o formato antigo fazia `rm -rf $DEPLOY_PATH/.env` antes do SCP, o que na produtos-01 destruiria as chaves de cifragem. A segunda é que o `docker-compose.prod.yml` deste repo foi removido: ele descrevia uma produção que não existia mais, e era justamente essa a fonte da confusão. O compose real está no infra.
 
 ## Arquivos relacionados
 
-- [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) — definição do workflow
-- [docker-compose.prod.yml](../docker-compose.prod.yml) — compose de produção (postgres, api, worker; sem Redis)
-- [.env.example](../.env.example) — referência de todas as variáveis do app
+- [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) — build, push e deploy
+- [docker-compose.yml](../docker-compose.yml) — stack local de desenvolvimento
+- [.env.example](../.env.example) — referência das variáveis do app
+- `sunnysystems/infra`, `compose/produtos-01/maritaca/` — compose e `.env.example` do que roda em produção

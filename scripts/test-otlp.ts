@@ -9,9 +9,10 @@
  * lado da app o sintoma é silêncio. Foi exatamente esse o caso da issue #76
  * (trace chegando, métrica nenhuma) e do bug da porta 4317 antes dele.
  *
- * Rode de dentro do container para que a resolução de nome e a rede sejam as
- * mesmas que a aplicação enxerga:
- *   docker compose -f docker-compose.prod.yml exec worker pnpm test:otlp
+ * Isto aqui é ferramenta de desenvolvimento: a imagem de produção carrega só o
+ * `dist/`, sem `scripts/` nem `tsx`. Para rodar a mesma sonda em produção, use
+ * o node que já está no container — o comando está em docs/observability.md,
+ * seção "Traces appear but metrics don't".
  */
 
 const endpointRaw = process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? ''

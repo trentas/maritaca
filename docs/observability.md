@@ -470,15 +470,33 @@ the app's own configuration is a single base URL, "traces work" is **not**
 evidence that metrics can work.
 
 Check each path separately, from inside the container so name resolution and
-network match what the app sees:
+network match what the app sees. In development, where the repo is available:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec worker pnpm test:otlp
+pnpm test:otlp
 ```
 
 ```
 [test-otlp] traces: OK {"url":"http://collector:4318/v1/traces","status":200}
 [test-otlp] metrics: ROTA NÃO ATENDE {"url":"http://collector:4318/v1/metrics","status":404}
+```
+
+In production the runtime image carries only `dist/` — no `scripts/`, no `tsx` —
+so run the same probe with the node that is already there:
+
+```bash
+cd /opt/maritaca   # produtos-01, ver docs/deploy.md
+docker compose exec -T worker node -e '
+const base = (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "").replace(/\/$/, "")
+for (const sinal of ["traces", "metrics", "logs"]) {
+  fetch(`${base}/v1/${sinal}`, {
+    method: "POST",
+    headers: { "content-type": "application/x-protobuf" },
+    body: new Uint8Array(),
+  })
+    .then((r) => console.log(sinal, r.status, r.status === 200 || r.status === 400 ? "OK" : "NAO ATENDE"))
+    .catch((e) => console.log(sinal, "ERRO", String(e.cause?.code || e.message)))
+}'
 ```
 
 A 404 on one path means the collector has no pipeline for that signal — fix it
