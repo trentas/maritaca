@@ -46,5 +46,7 @@ Thumbs.db
 *.sqlite
 
 # Docker
-.dockerignore
+# O .dockerignore NÃO entra aqui: ele precisa estar versionado para valer no
+# build de todo mundo (e no CI). Enquanto esteve ignorado, o `COPY . .` dos
+# Dockerfiles levava node_modules, .env e .git para dentro do contexto.
 docker-compose.override.yml
