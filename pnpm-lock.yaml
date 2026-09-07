@@ -146,7 +146,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: ^4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.9)(vite@8.2.0(@types/node@26.2.0)(esbuild@0.28.1)(tsx@4.22.4)(yaml@2.9.0))
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.9)(vite@8.2.0(@types/node@26.2.0)(esbuild@0.27.7)(tsx@4.22.4)(yaml@2.9.0))
 
   packages/core:
     dependencies:
@@ -198,7 +198,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: ^4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.9)(vite@8.2.0(@types/node@26.2.0)(esbuild@0.27.7)(tsx@4.22.4)(yaml@2.9.0))
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.9)(vite@8.2.0(@types/node@26.2.0)(esbuild@0.28.1)(tsx@4.22.4)(yaml@2.9.0))
 
   packages/sdk:
     dependencies:
@@ -273,8 +273,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0
       '@slack/types':
-        specifier: ^2.21.1
-        version: 2.21.1
+        specifier: ^3.1.0
+        version: 3.1.0
       '@slack/web-api':
         specifier: ^7.17.0
         version: 7.17.0
@@ -1724,6 +1724,10 @@ packages:
   '@slack/types@2.21.1':
     resolution: {integrity: sha512-I8vmSjNYWsaxuWPx6dz4yeh0h7vRBWbgAMK14LEmblbZ404BtrPbXs6jDPx4cYgGf8msDGF4A9opLZBu21FViQ==}
     engines: {node: '>= 12.13.0', npm: '>= 6.12.0'}
+
+  '@slack/types@3.1.0':
+    resolution: {integrity: sha512-bTzqrO3lxJ5iWedo1eJKNAs1koyEhaTwKLJUkD3KETnPeQvD978AAE4jvWstUws8Gbbc4JR6iYE6F7XjE8UGmw==}
+    engines: {node: '>= 20', npm: '>=9.6.4'}
 
   '@slack/web-api@7.17.0':
     resolution: {integrity: sha512-jejr34a8B4L5AS713wOAx1LAqNkW16HVMDEa6sYBvFDc/llUBl8hXaiI4BwF+Al+Sug19Vn2O7iokTVIhVvZ1Q==}
@@ -4436,6 +4440,8 @@ snapshots:
 
   '@slack/types@2.21.1': {}
 
+  '@slack/types@3.1.0': {}
+
   '@slack/web-api@7.17.0':
     dependencies:
       '@slack/logger': 4.0.1
@@ -4559,7 +4565,7 @@ snapshots:
       obug: 2.1.3
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.9)(vite@8.2.0(@types/node@26.2.0)(esbuild@0.27.7)(tsx@4.22.4)(yaml@2.9.0))
+      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.9)(vite@8.2.0(@types/node@26.2.0)(esbuild@0.28.1)(tsx@4.22.4)(yaml@2.9.0))
 
   '@vitest/expect@4.1.9':
     dependencies:
