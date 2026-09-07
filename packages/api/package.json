@@ -37,7 +37,7 @@
     "drizzle-orm": "^0.45.2",
     "fastify": "^4.26.0",
     "ioredis": "^5.11.1",
-    "svix": "^1.99.1"
+    "svix": "^2.3.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
