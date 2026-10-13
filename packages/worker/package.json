@@ -43,7 +43,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "@types/node": "^26.0.1",
+    "@types/node": "^26.6.5",
     "@types/web-push": "^3.6.4",
     "@vitest/coverage-v8": "^4.1.9",
     "tsup": "^8.0.0",
