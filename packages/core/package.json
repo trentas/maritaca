@@ -34,7 +34,7 @@
     "pino": "^10.3.1",
     "pino-opentelemetry-transport": "^4.0.2",
     "postgres": "^3.4.9",
-    "zod": "^3.23.0"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@opentelemetry/sdk-metrics": "^2.10.0",
