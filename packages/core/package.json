@@ -28,10 +28,10 @@
     "db:push": "dotenv -e ../../.env -- drizzle-kit push"
   },
   "dependencies": {
-    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/api": "^1.10.0",
     "@paralleldrive/cuid2": "^3.3.0",
-    "drizzle-orm": "^0.45.2",
-    "pino": "^10.3.1",
+    "drizzle-orm": "^0.45.4",
+    "pino": "^10.4.0",
     "pino-opentelemetry-transport": "^4.0.2",
     "postgres": "^3.4.9",
     "zod": "^3.23.0"
